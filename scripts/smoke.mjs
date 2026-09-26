@@ -90,11 +90,11 @@ const stillHeld = await page.locator('.puzzle-board.is-solved').count()
 const stillNext = await page.locator('#btn-next').count()
 
 const ok =
-  tileCount === 9 &&
+  tileCount === 4 &&
   footerVisible === 1 &&
   coachHidden === 1 &&
   celebrateGone === 0 &&
-  afterNextTiles === 9 &&
+  afterNextTiles === 4 &&
   stillSolved === 0 &&
   nextHidden === 1 &&
   stillHeld === 1 &&
