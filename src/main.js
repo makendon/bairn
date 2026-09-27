@@ -96,6 +96,30 @@ function startSession() {
   loadNextPuzzle()
 }
 
+/** Monotonic gen so a late hold-auto cannot clobber a fresher Next. */
+let loadGen = 0
+
+/**
+ * Decode before paint — blob URLs can still race; never show empty tiles.
+ * @param {string} url
+ * @returns {Promise<HTMLImageElement>}
+ */
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const done = () => resolve(img)
+      if (typeof img.decode === 'function') {
+        img.decode().then(done).catch(done)
+      } else {
+        done()
+      }
+    }
+    img.onerror = () => reject(new Error('image load failed'))
+    img.src = url
+  })
+}
+
 async function loadNextPuzzle() {
   if (state.timer?.expired) {
     renderTimesUp()
@@ -104,23 +128,47 @@ async function loadNextPuzzle() {
   clearHold()
   state.screen = 'puzzle'
   state.celebrating = false
-  teardownPuzzle(false)
 
+  const gen = ++loadGen
+  // Keep prior board painted until the next photo is decoded (Ash: no blank tiles).
   const photo = await pickNextPhoto(state.currentPhotoId)
+  if (gen !== loadGen) return
   if (!photo) {
+    teardownPuzzle()
     renderSplash({ error: 'No photos yet. Add some or try the demo.' })
     return
   }
 
-  if (state.currentUrl) {
+  const nextUrl = blobUrl(photo)
+  try {
+    await loadImage(nextUrl)
+  } catch (err) {
+    console.error(err)
     try {
-      URL.revokeObjectURL(state.currentUrl)
+      URL.revokeObjectURL(nextUrl)
     } catch (_) {}
+    if (gen !== loadGen) return
+    if (!state.puzzle) {
+      renderSplash({ error: 'Could not load photo.' })
+    }
+    return
   }
-  state.currentPhotoId = photo.id
-  state.currentUrl = blobUrl(photo)
-  await markUsed(photo.id)
+  if (gen !== loadGen) {
+    try {
+      URL.revokeObjectURL(nextUrl)
+    } catch (_) {}
+    return
+  }
 
+  const prevUrl = state.currentUrl
+  state.currentPhotoId = photo.id
+  state.currentUrl = nextUrl
+  await markUsed(photo.id)
+  if (gen !== loadGen) return
+
+  // Swap only after image is ready. Replace shell in one turn (no mid-frame empty board),
+  // sync-paint tiles, then revoke the previous object URL.
+  state.puzzle = null
   renderPuzzleShell()
   const board = document.getElementById('board')
   const diff = DIFFICULTY[state.difficulty] || DIFFICULTY.easy
@@ -128,6 +176,14 @@ async function loadNextPuzzle() {
     grid: diff.grid,
     onSolved: handleSolved,
   })
+
+  if (prevUrl && prevUrl !== nextUrl) {
+    requestAnimationFrame(() => {
+      try {
+        URL.revokeObjectURL(prevUrl)
+      } catch (_) {}
+    })
+  }
 }
 
 function clearHold() {
@@ -286,7 +342,9 @@ function renderPuzzleShell() {
         <div class="timer-track" aria-hidden="true"><div id="timer-bar" class="timer-bar"></div></div>
         <button class="parent-link" id="btn-parent" aria-label="Hold to add more photos" title="Hold to add photos">···</button>
       </header>
-      <div id="board" class="board" role="application" aria-label="Photo puzzle"></div>
+      <div class="board-slot">
+        <div id="board" class="board" role="application" aria-label="Photo puzzle"></div>
+      </div>
       <p class="coach" id="coach">Drag or tap two tiles to swap</p>
       <div id="reveal-footer" class="reveal-footer" hidden>
         <p class="reveal-caption">Have a look</p>

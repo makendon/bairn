@@ -138,6 +138,8 @@ export function createPuzzle(container, imageUrl, { grid = 3, onSolved } = {}) {
     })
   }
 
+  // Caller (loadNextPuzzle) must decode the image first — paint sync so tiles
+  // never mount with an empty background.
   paint()
 
   if (order.every((v, i) => v === i)) {

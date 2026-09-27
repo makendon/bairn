@@ -156,10 +156,19 @@ body {
 /* Puzzle */
 
 .puzzle-screen {
-  gap: 0.65rem;
-  max-width: 520px;
+  gap: 0.5rem;
+  max-width: 100%;
   margin: 0 auto;
   width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+@media (min-width: 520px) {
+  .puzzle-screen {
+    max-width: 520px;
+  }
 }
 
 .hud {
@@ -241,13 +250,23 @@ body {
   box-shadow: 0 0 0 2px rgba(232, 184, 109, 0.45);
 }
 
-.board {
-  flex: 1;
+/* Flex slot only — keeps the square board centred and full-bleed in remaining safe area */
+.board-slot {
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 0;
   width: 100%;
+  container-type: size;
+  container-name: board-slot;
+}
+
+.board {
+  /* #board becomes .puzzle-board; do not flex-grow the grid itself */
+  width: auto;
+  height: auto;
+  min-height: 0;
 }
 
 .puzzle-board {
@@ -255,15 +274,28 @@ body {
   display: grid;
   grid-template-columns: repeat(var(--grid, 3), 1fr);
   gap: var(--tile-gap);
-  width: min(100%, calc(100dvh - 11rem));
-  aspect-ratio: 1;
-  max-height: min(72dvh, 520px);
-  padding: 4px;
+  /* Square full-bleed inside the slot (phone-first ~390×844) */
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 1 / 1;
+  padding: 0;
   border-radius: var(--radius);
+  flex: 0 0 auto;
   transition:
     gap var(--join-duration) cubic-bezier(0.22, 1, 0.36, 1),
     padding var(--join-duration) cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow var(--join-duration) ease;
+}
+
+/* Fallback when container queries unavailable */
+@supports not (width: 1cqw) {
+  .puzzle-board {
+    width: min(100%, calc(100dvh - 11rem));
+    height: auto;
+    max-height: min(100%, calc(100dvh - 11rem));
+  }
 }
 
 .puzzle-tile {
@@ -282,8 +314,8 @@ body {
     box-shadow var(--join-duration) ease,
     border-radius var(--join-duration) ease,
     outline 0.15s ease;
-  min-width: 0;
-  min-height: 0;
+  min-width: 44px;
+  min-height: 44px;
   aspect-ratio: 1;
 }
 
