@@ -1,0 +1,626 @@
+:root {
+  color-scheme: dark;
+  --bg: #14141a;
+  --bg-elev: #1c1c24;
+  --ink: #f4f1ea;
+  --ink-muted: #a8a39a;
+  --accent: #e8b86d;
+  --accent-ink: #1a140c;
+  --tile-gap: 10px;
+  --radius: 22px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --font: "SF Pro Rounded", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --join-duration: 0.28s;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+#app {
+  min-height: 100%;
+  min-height: 100dvh;
+}
+
+.safe {
+  padding-top: max(1.25rem, var(--safe-top));
+  padding-bottom: max(1.5rem, var(--safe-bottom));
+  padding-left: max(1.25rem, var(--safe-left));
+  padding-right: max(1.25rem, var(--safe-right));
+}
+
+.screen {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.splash,
+.timer-confirm,
+.times-up {
+  justify-content: center;
+  gap: 0.75rem;
+  max-width: 420px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.splash-mark {
+  font-size: 2rem;
+  color: var(--accent);
+  opacity: 0.9;
+  margin-bottom: 0.5rem;
+}
+
+.title {
+  font-size: clamp(2.4rem, 8vw, 3rem);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.title.sm {
+  font-size: clamp(1.7rem, 6vw, 2.1rem);
+}
+
+.eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.lede {
+  margin: 0.35rem 0 1.5rem;
+  color: var(--ink-muted);
+  font-size: 1.05rem;
+  line-height: 1.45;
+}
+
+.hint {
+  margin-top: 1.5rem;
+  color: var(--ink-muted);
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.error {
+  color: #ff8f8f;
+  margin: 0 0 0.5rem;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: min(100%, 280px);
+  margin: 0 auto;
+}
+
+.btn {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  padding: 1rem 1.4rem;
+  font: inherit;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 52px;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.btn.ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1.5px solid rgba(244, 241, 234, 0.22);
+}
+
+/* Puzzle */
+
+.puzzle-screen {
+  gap: 0.5rem;
+  max-width: 100%;
+  margin: 0 auto;
+  width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+@media (min-width: 520px) {
+  .puzzle-screen {
+    max-width: 520px;
+  }
+}
+
+.hud {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+  padding-top: 0.25rem;
+}
+
+.timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink-muted);
+  letter-spacing: 0.02em;
+}
+
+.timer-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(232, 184, 109, 0.2);
+}
+
+.timer-track {
+  grid-column: 1 / -1;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(244, 241, 234, 0.08);
+  overflow: hidden;
+}
+
+.timer-bar {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, var(--accent), #f0d4a0);
+  border-radius: inherit;
+  transition: width 0.25s linear;
+}
+
+.parent-gate {
+  justify-self: end;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  line-height: 1;
+}
+
+.parent-hold-hint {
+  font-size: 0.58rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  color: var(--ink-muted);
+  opacity: 0.5;
+  user-select: none;
+  pointer-events: none;
+}
+
+.parent-link {
+  appearance: none;
+  border: none;
+  background: rgba(244, 241, 234, 0.06);
+  color: var(--ink-muted);
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  font-size: 1.1rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.parent-link.bottom {
+  width: auto;
+  margin: 2rem auto 0;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+}
+
+.parent-link.is-holding {
+  background: rgba(232, 184, 109, 0.22);
+  color: var(--accent);
+  transform: scale(0.96);
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.parent-gate:has(.parent-link.is-holding) .parent-hold-hint {
+  opacity: 0.85;
+  color: var(--accent);
+}
+
+.parent-link.is-unlocked {
+  background: rgba(232, 184, 109, 0.35);
+  color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(232, 184, 109, 0.45);
+}
+
+/* Flex slot only — keeps the square board centred and full-bleed in remaining safe area */
+.board-slot {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  width: 100%;
+  container-type: size;
+  container-name: board-slot;
+}
+
+.board {
+  /* #board becomes .puzzle-board; do not flex-grow the grid itself */
+  width: auto;
+  height: auto;
+  min-height: 0;
+}
+
+.puzzle-board {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--grid, 3), 1fr);
+  gap: var(--tile-gap);
+  /* Square full-bleed inside the slot (phone-first ~390×844) */
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  border-radius: var(--radius);
+  flex: 0 0 auto;
+  transition:
+    gap var(--join-duration) cubic-bezier(0.22, 1, 0.36, 1),
+    padding var(--join-duration) cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow var(--join-duration) ease;
+}
+
+/* Fallback when container queries unavailable */
+@supports not (width: 1cqw) {
+  .puzzle-board {
+    width: min(100%, calc(100dvh - 11rem));
+    height: auto;
+    max-height: min(100%, calc(100dvh - 11rem));
+  }
+}
+
+.puzzle-tile {
+  appearance: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  border-radius: calc(var(--radius) - 4px);
+  overflow: hidden;
+  background: var(--bg-elev);
+  cursor: grab;
+  touch-action: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  transition:
+    transform 0.15s ease,
+    box-shadow var(--join-duration) ease,
+    border-radius var(--join-duration) ease,
+    outline 0.15s ease;
+  min-width: 44px;
+  min-height: 44px;
+  aspect-ratio: 1;
+}
+
+.puzzle-tile:active,
+.puzzle-tile.is-dragging {
+  cursor: grabbing;
+  transform: scale(1.04);
+  z-index: 2;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+}
+
+.puzzle-tile.is-selected {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  transform: scale(1.03);
+}
+
+.puzzle-piece {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+/* Solved: soft melt into one continuous photo (no grid) */
+.puzzle-board.is-solved {
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+
+.puzzle-board.is-solved .puzzle-tile {
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+  cursor: default;
+  outline: none;
+  /* continuous reveal covers; hide tiles so no hairline seams remain */
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.2s ease,
+    visibility 0s linear 0.2s,
+    box-shadow var(--join-duration) ease,
+    border-radius var(--join-duration) ease;
+}
+
+/* Continuous photo = the only thing you see on hold */
+.puzzle-reveal {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background-color: var(--bg-elev);
+  background-size: 100% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+  border-radius: inherit;
+  opacity: 0;
+  transform: scale(1.012);
+  filter: brightness(1.02);
+  transition:
+    opacity 0.28s ease,
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.35s ease;
+  pointer-events: none;
+  /* single paint layer — no grid underneath */
+  isolation: isolate;
+}
+
+.puzzle-reveal.is-in {
+  opacity: 1;
+  transform: scale(1);
+  filter: brightness(1);
+}
+
+.coach {
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+  margin: 0 0 0.25rem;
+  opacity: 0.8;
+  min-height: 1.25rem;
+}
+
+.coach[hidden] {
+  display: none;
+}
+
+.reveal-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.15rem 0 0.35rem;
+  animation: fadeIn 0.35s ease;
+}
+
+.reveal-footer[hidden] {
+  display: none;
+}
+
+.reveal-caption {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  opacity: 0.85;
+}
+
+.btn-next {
+  width: min(100%, 220px);
+  min-height: 56px;
+  font-size: 1.15rem;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(1.5rem, var(--safe-bottom));
+  transform: translateX(-50%) translateY(120%);
+  background: var(--bg-elev);
+  color: var(--ink);
+  padding: 0.7rem 1.1rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  transition: transform 0.25s ease;
+  z-index: 30;
+  border: 1px solid rgba(244, 241, 234, 0.08);
+}
+
+.toast.show {
+  transform: translateX(-50%) translateY(0);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+
+.field-label {
+  margin: 0.25rem 0 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.diff-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.55rem;
+  width: min(100%, 320px);
+  margin: 0 auto 1.35rem;
+}
+
+.diff-pill {
+  appearance: none;
+  border: 1.5px solid rgba(244, 241, 234, 0.18);
+  background: rgba(244, 241, 234, 0.04);
+  color: var(--ink);
+  border-radius: 16px;
+  padding: 0.75rem 0.4rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  min-height: 64px;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease;
+}
+
+.diff-pill:active {
+  transform: scale(0.98);
+}
+
+.diff-pill.is-selected {
+  border-color: var(--accent);
+  background: rgba(232, 184, 109, 0.14);
+  box-shadow: 0 0 0 1px rgba(232, 184, 109, 0.25);
+}
+
+.diff-label {
+  font-weight: 650;
+  font-size: 0.95rem;
+}
+
+.diff-meta {
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+}
+
+/* Soft shimmer on held photo — notice once, then quiet */
+.puzzle-sparkle {
+  position: absolute;
+  inset: -2%;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    linear-gradient(
+      115deg,
+      transparent 0%,
+      transparent 35%,
+      rgba(255, 255, 255, 0.55) 48%,
+      rgba(232, 184, 109, 0.45) 52%,
+      transparent 65%,
+      transparent 100%
+    );
+  background-size: 220% 100%;
+  background-position: 120% 0;
+  mix-blend-mode: soft-light;
+}
+
+.puzzle-sparkle.is-in {
+  animation: softShimmer 1s ease-out forwards;
+}
+
+.puzzle-sparkle::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 22% 28%, rgba(255, 250, 235, 0.9) 0 3px, transparent 5px),
+    radial-gradient(circle at 70% 24%, rgba(255, 236, 190, 0.85) 0 2.5px, transparent 5px),
+    radial-gradient(circle at 58% 70%, rgba(255, 255, 255, 0.8) 0 3px, transparent 6px),
+    radial-gradient(circle at 32% 74%, rgba(232, 184, 109, 0.9) 0 2.5px, transparent 5px),
+    radial-gradient(circle at 84% 55%, rgba(255, 248, 230, 0.75) 0 2px, transparent 4px);
+  opacity: 0;
+  animation: softGlints 1s ease-out forwards;
+}
+
+@keyframes softShimmer {
+  0% { opacity: 0; background-position: 120% 0; }
+  15% { opacity: 1; }
+  70% { opacity: 0.85; background-position: -20% 0; }
+  100% { opacity: 0; background-position: -40% 0; }
+}
+
+@keyframes softGlints {
+  0%, 100% { opacity: 0; }
+  25% { opacity: 1; }
+  55% { opacity: 0.7; }
+}
+
+.puzzle-board.has-sparkle.is-solved {
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(232, 184, 109, 0.28),
+    0 0 42px rgba(232, 184, 109, 0.35);
+  animation: softGlowPulse 0.9s ease-out;
+}
+
+@keyframes softGlowPulse {
+  0% { box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(232, 184, 109, 0.05), 0 0 0 rgba(232, 184, 109, 0); }
+  40% { box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(232, 184, 109, 0.4), 0 0 52px rgba(232, 184, 109, 0.45); }
+  100% { box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(232, 184, 109, 0.28), 0 0 42px rgba(232, 184, 109, 0.35); }
+}
+
+.puzzle-board[data-grid="4"] {
+  --tile-gap: 6px;
+}
+
+.puzzle-board[data-grid="2"] {
+  --tile-gap: 14px;
+}
+
+@media (min-width: 420px) {
+  :root {
+    --tile-gap: 12px;
+  }
+  .puzzle-board[data-grid="4"] {
+    --tile-gap: 8px;
+  }
+  .puzzle-board[data-grid="2"] {
+    --tile-gap: 16px;
+  }
+}
