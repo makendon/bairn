@@ -23,7 +23,7 @@ Dev server binds `0.0.0.0:5173` (phone-friendly on the same network). Local: htt
 ## Preview notes
 
 - **Desktop / Computer tab:** use **Try demo** — built-in illustration pack, no gallery needed.  
-- **Phone:** first visit → **Use photos** → multi-select from gallery once; pool stored in IndexedDB. Thereafter auto-pick. Quiet **···** / “Add more photos” for parents only.
+- **Phone:** first visit → **Use photos** → multi-select from gallery once; pool stored in IndexedDB. Thereafter auto-pick. Quiet mid-puzzle **···** with a tiny “hold” hint — long-press (~700ms) adds photos; tap does nothing (kid-safe).
 
 ## Stack
 

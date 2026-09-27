@@ -340,7 +340,10 @@ function renderPuzzleShell() {
           <span id="timer-label">${escapeHtml(label)}</span>
         </div>
         <div class="timer-track" aria-hidden="true"><div id="timer-bar" class="timer-bar"></div></div>
-        <button class="parent-link" id="btn-parent" aria-label="Hold to add more photos" title="Hold to add photos">···</button>
+        <div class="parent-gate">
+          <button class="parent-link" id="btn-parent" aria-label="Hold to add more photos" title="Hold to add photos">···</button>
+          <span class="parent-hold-hint" aria-hidden="true">hold</span>
+        </div>
       </header>
       <div class="board-slot">
         <div id="board" class="board" role="application" aria-label="Photo puzzle"></div>
@@ -419,7 +422,11 @@ function bindParentLongPress(btn, onUnlock) {
     if (e.button !== undefined && e.button !== 0) return
     unlocked = false
     btn.classList.add('is-holding')
-    btn.setPointerCapture?.(e.pointerId)
+    try {
+      btn.setPointerCapture?.(e.pointerId)
+    } catch {
+      /* synthetic / inactive pointer ids — hold timer still runs */
+    }
     holdId = setTimeout(() => {
       holdId = null
       unlocked = true

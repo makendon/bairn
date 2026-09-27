@@ -33,6 +33,48 @@ await page.waitForSelector('#btn-start')
 await page.click('#btn-start')
 await page.waitForSelector('.puzzle-board')
 
+// Parent ··· discoverability: always-visible “hold” hint; tap no-op; long-press opens add-photos
+await page.waitForSelector('.parent-hold-hint')
+const parentAffordance = await page.evaluate(() => {
+  const hint = document.querySelector('.parent-hold-hint')
+  const btn = document.getElementById('btn-parent')
+  const style = hint ? getComputedStyle(hint) : null
+  return {
+    hintText: (hint?.textContent || '').trim().toLowerCase(),
+    hintVisible: !!(hint && style && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0),
+    btnPresent: !!btn,
+  }
+})
+
+await page.evaluate(() => {
+  window.__fileClicks = 0
+  const input = document.querySelector('input[type="file"]')
+  if (!input) return
+  input.click = () => { window.__fileClicks += 1 }
+})
+
+// Quick tap — must not open add-photos
+await page.evaluate(() => {
+  const btn = document.getElementById('btn-parent')
+  btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, button: 0, clientX: 10, clientY: 10 }))
+  btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, button: 0, clientX: 10, clientY: 10 }))
+  btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))
+})
+await page.waitForTimeout(100)
+const fileClicksAfterTap = await page.evaluate(() => window.__fileClicks)
+
+// Long-press ~700ms — must open add-photos (fileInput.click)
+await page.evaluate(() => {
+  const btn = document.getElementById('btn-parent')
+  btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 2, button: 0, clientX: 10, clientY: 10 }))
+})
+await page.waitForTimeout(780)
+await page.evaluate(() => {
+  const btn = document.getElementById('btn-parent')
+  btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 2, button: 0, clientX: 10, clientY: 10 }))
+})
+const fileClicksAfterHold = await page.evaluate(() => window.__fileClicks)
+
 const tileCount = await page.locator('.puzzle-tile').count()
 
 async function solveCurrent() {
@@ -135,6 +177,11 @@ const resumeTiles = await page.locator('.puzzle-tile').count()
 
 const ok =
   tileCount === 4 &&
+  parentAffordance.hintText === 'hold' &&
+  parentAffordance.hintVisible &&
+  parentAffordance.btnPresent &&
+  fileClicksAfterTap === 0 &&
+  fileClicksAfterHold === 1 &&
   footerVisible === 1 &&
   coachHidden === 1 &&
   celebrateGone === 0 &&
@@ -158,6 +205,9 @@ const ok =
 
 console.log(JSON.stringify({
   tileCount,
+  parentAffordance,
+  fileClicksAfterTap,
+  fileClicksAfterHold,
   gapAfterSolve: gap,
   footerVisible,
   coachHidden,

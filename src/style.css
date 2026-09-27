@@ -215,6 +215,26 @@ body {
   transition: width 0.25s linear;
 }
 
+.parent-gate {
+  justify-self: end;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  line-height: 1;
+}
+
+.parent-hold-hint {
+  font-size: 0.58rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  color: var(--ink-muted);
+  opacity: 0.5;
+  user-select: none;
+  pointer-events: none;
+}
+
 .parent-link {
   appearance: none;
   border: none;
@@ -226,7 +246,6 @@ body {
   font-size: 1.1rem;
   letter-spacing: 0.08em;
   cursor: pointer;
-  justify-self: end;
 }
 
 .parent-link.bottom {
@@ -242,6 +261,11 @@ body {
   color: var(--accent);
   transform: scale(0.96);
   transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.parent-gate:has(.parent-link.is-holding) .parent-hold-hint {
+  opacity: 0.85;
+  color: var(--accent);
 }
 
 .parent-link.is-unlocked {
