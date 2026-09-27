@@ -342,7 +342,7 @@ function renderPuzzleShell() {
         <div class="timer-track" aria-hidden="true"><div id="timer-bar" class="timer-bar"></div></div>
         <div class="parent-gate">
           <button class="parent-link" id="btn-parent" aria-label="Hold to add more photos" title="Hold to add photos">···</button>
-          <span class="parent-hold-hint" aria-hidden="true">hold</span>
+          <span class="parent-hold-hint" aria-hidden="true">hold to add photos</span>
         </div>
       </header>
       <div class="board-slot">

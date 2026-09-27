@@ -33,7 +33,7 @@ await page.waitForSelector('#btn-start')
 await page.click('#btn-start')
 await page.waitForSelector('.puzzle-board')
 
-// Parent ··· discoverability: always-visible “hold” hint; tap no-op; long-press opens add-photos
+// Parent ··· discoverability: always-visible “hold to add photos” hint; tap no-op; long-press opens add-photos
 await page.waitForSelector('.parent-hold-hint')
 const parentAffordance = await page.evaluate(() => {
   const hint = document.querySelector('.parent-hold-hint')
@@ -177,7 +177,7 @@ const resumeTiles = await page.locator('.puzzle-tile').count()
 
 const ok =
   tileCount === 4 &&
-  parentAffordance.hintText === 'hold' &&
+  parentAffordance.hintText === 'hold to add photos' &&
   parentAffordance.hintVisible &&
   parentAffordance.btnPresent &&
   fileClicksAfterTap === 0 &&
