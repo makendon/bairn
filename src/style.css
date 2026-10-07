@@ -260,20 +260,68 @@ body {
   letter-spacing: 0.02em;
 }
 
+/* Hold progress: a ring fills around ··· over the 700ms hold (keep in sync with PARENT_HOLD_MS) */
+@property --hold {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
+.parent-gate .parent-link {
+  position: relative;
+}
+
+.parent-gate .parent-link::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 999px;
+  padding: 4px;
+  background: conic-gradient(var(--accent) var(--hold), rgba(232, 184, 109, 0.18) 0);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  opacity: 0;
+  pointer-events: none;
+}
+
 .parent-link.is-holding {
   background: rgba(232, 184, 109, 0.22);
   color: var(--accent);
-  transform: scale(0.96);
+  transform: scale(1.08);
   transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.parent-link.is-holding::before {
+  opacity: 1;
+  animation: parent-hold-fill 0.7s linear forwards;
+}
+
+@keyframes parent-hold-fill {
+  from { --hold: 0%; }
+  to { --hold: 100%; }
 }
 
 .parent-gate:has(.parent-link.is-holding) .parent-hold-hint,
 .parent-gate:has(.parent-link.is-armed) .parent-hold-hint {
-  opacity: 0.85;
+  opacity: 1;
   color: var(--accent);
 }
 
-.parent-link.is-armed,
+/* Armed: solid accent, unmistakably "ready — let go" */
+.parent-link.is-armed {
+  background: var(--accent);
+  color: var(--accent-ink);
+  transform: scale(1.15);
+  box-shadow: 0 0 0 4px rgba(232, 184, 109, 0.45), 0 0 18px 4px rgba(232, 184, 109, 0.55);
+}
+
+.parent-link.is-armed::before {
+  opacity: 1;
+  --hold: 100%;
+  background: var(--accent);
+}
+
 .parent-link.is-unlocked {
   background: rgba(232, 184, 109, 0.35);
   color: var(--accent);

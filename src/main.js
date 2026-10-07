@@ -442,6 +442,7 @@ function bindParentLongPress(btn, onUnlock) {
       armed = true
       btn.classList.remove('is-holding')
       btn.classList.add('is-armed')
+      navigator.vibrate?.(30) // Android haptic tick; no-op elsewhere
     }, PARENT_HOLD_MS)
   })
 

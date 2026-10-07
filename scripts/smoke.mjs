@@ -71,9 +71,9 @@ await parentPointer('pointerup', 1)
 await page.waitForTimeout(100)
 const fileClicksAfterTap = await page.evaluate(() => window.__fileClicks)
 
-// Hold past 700ms — arms, but must NOT open while the finger is still down
+// Hold well past 700ms — arms, stays armed, but must NOT open while the finger is still down
 await parentPointer('pointerdown', 2)
-await page.waitForTimeout(780)
+await page.waitForTimeout(1500)
 const armedBeforeRelease = await page.evaluate(() => document.getElementById('btn-parent').classList.contains('is-armed'))
 const fileClicksWhileHeld = await page.evaluate(() => window.__fileClicks)
 // Release on the button — opens add-photos exactly once
