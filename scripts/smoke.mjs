@@ -53,27 +53,53 @@ await page.evaluate(() => {
   input.click = () => { window.__fileClicks += 1 }
 })
 
+// Pointer helper at the centre of ··· (release outside the button must not open)
+async function parentPointer(type, pointerId, { off = false } = {}) {
+  await page.evaluate(({ type, pointerId, off }) => {
+    const btn = document.getElementById('btn-parent')
+    const r = btn.getBoundingClientRect()
+    const x = off ? r.left - 60 : r.left + r.width / 2
+    const y = off ? r.bottom + 60 : r.top + r.height / 2
+    btn.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId, pointerType: 'touch', button: 0, clientX: x, clientY: y }))
+    if (type === 'pointerup') btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))
+  }, { type, pointerId, off })
+}
+
 // Quick tap — must not open add-photos
-await page.evaluate(() => {
-  const btn = document.getElementById('btn-parent')
-  btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, button: 0, clientX: 10, clientY: 10 }))
-  btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, button: 0, clientX: 10, clientY: 10 }))
-  btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))
-})
+await parentPointer('pointerdown', 1)
+await parentPointer('pointerup', 1)
 await page.waitForTimeout(100)
 const fileClicksAfterTap = await page.evaluate(() => window.__fileClicks)
 
-// Long-press ~700ms — must open add-photos (fileInput.click)
-await page.evaluate(() => {
-  const btn = document.getElementById('btn-parent')
-  btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 2, button: 0, clientX: 10, clientY: 10 }))
-})
+// Hold past 700ms — arms, but must NOT open while the finger is still down
+await parentPointer('pointerdown', 2)
 await page.waitForTimeout(780)
-await page.evaluate(() => {
-  const btn = document.getElementById('btn-parent')
-  btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 2, button: 0, clientX: 10, clientY: 10 }))
-})
+const armedBeforeRelease = await page.evaluate(() => document.getElementById('btn-parent').classList.contains('is-armed'))
+const fileClicksWhileHeld = await page.evaluate(() => window.__fileClicks)
+// Release on the button — opens add-photos exactly once
+await parentPointer('pointerup', 2)
 const fileClicksAfterHold = await page.evaluate(() => window.__fileClicks)
+
+// Hold past 700ms, slide off, release — disarms, nothing opens
+await parentPointer('pointerdown', 3)
+await page.waitForTimeout(780)
+await parentPointer('pointermove', 3, { off: true })
+await parentPointer('pointerup', 3, { off: true })
+const fileClicksAfterSlideOff = await page.evaluate(() => window.__fileClicks)
+
+// Long-press system menu is suppressed on ···
+const parentCallout = await page.evaluate(() => {
+  const btn = document.getElementById('btn-parent')
+  const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
+  btn.dispatchEvent(ev)
+  const cs = getComputedStyle(btn)
+  return {
+    contextmenuPrevented: ev.defaultPrevented,
+    touchCallout: cs.webkitTouchCallout ?? cs.getPropertyValue('-webkit-touch-callout'),
+    userSelect: cs.userSelect || cs.webkitUserSelect,
+    touchAction: cs.touchAction,
+  }
+})
 
 const tileCount = await page.locator('.puzzle-tile').count()
 
@@ -181,7 +207,13 @@ const ok =
   parentAffordance.hintVisible &&
   parentAffordance.btnPresent &&
   fileClicksAfterTap === 0 &&
+  armedBeforeRelease &&
+  fileClicksWhileHeld === 0 &&
   fileClicksAfterHold === 1 &&
+  fileClicksAfterSlideOff === 1 &&
+  parentCallout.contextmenuPrevented &&
+  parentCallout.userSelect === 'none' &&
+  parentCallout.touchAction === 'manipulation' &&
   footerVisible === 1 &&
   coachHidden === 1 &&
   celebrateGone === 0 &&
@@ -207,7 +239,11 @@ console.log(JSON.stringify({
   tileCount,
   parentAffordance,
   fileClicksAfterTap,
+  armedBeforeRelease,
+  fileClicksWhileHeld,
   fileClicksAfterHold,
+  fileClicksAfterSlideOff,
+  parentCallout,
   gapAfterSolve: gap,
   footerVisible,
   coachHidden,

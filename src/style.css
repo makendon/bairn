@@ -246,6 +246,10 @@ body {
   font-size: 1.1rem;
   letter-spacing: 0.08em;
   cursor: pointer;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
 }
 
 .parent-link.bottom {
@@ -263,11 +267,13 @@ body {
   transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
-.parent-gate:has(.parent-link.is-holding) .parent-hold-hint {
+.parent-gate:has(.parent-link.is-holding) .parent-hold-hint,
+.parent-gate:has(.parent-link.is-armed) .parent-hold-hint {
   opacity: 0.85;
   color: var(--accent);
 }
 
+.parent-link.is-armed,
 .parent-link.is-unlocked {
   background: rgba(232, 184, 109, 0.35);
   color: var(--accent);

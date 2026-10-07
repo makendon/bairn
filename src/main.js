@@ -402,48 +402,71 @@ function showToast(msg) {
 }
 
 
-/** Mid-puzzle parent gate: long-press opens add-photos; kid tap does nothing. */
+/**
+ * Mid-puzzle parent gate: hold ··· for PARENT_HOLD_MS to arm it, release to open add-photos.
+ * The picker opens synchronously in pointerup: on touch, only the finger lifting counts as
+ * the user gesture that lets a page open a file picker (iOS Safari drops it if the call goes async).
+ * A short tap, or sliding off before release, does nothing.
+ */
 const PARENT_HOLD_MS = 700
 
 function bindParentLongPress(btn, onUnlock) {
   if (!btn) return
   let holdId = null
-  let unlocked = false
+  let armed = false
+  let activePointer = null
 
-  const clear = () => {
+  const reset = () => {
     if (holdId != null) {
       clearTimeout(holdId)
       holdId = null
     }
-    btn.classList.remove('is-holding')
+    armed = false
+    activePointer = null
+    btn.classList.remove('is-holding', 'is-armed')
+  }
+
+  // Touch pointers are implicitly captured, so pointerleave won't fire; hit-test instead.
+  const isOver = (e) => {
+    const r = btn.getBoundingClientRect()
+    return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom
   }
 
   btn.addEventListener('pointerdown', (e) => {
     if (e.button !== undefined && e.button !== 0) return
-    unlocked = false
+    reset()
+    activePointer = e.pointerId
     btn.classList.add('is-holding')
-    try {
-      btn.setPointerCapture?.(e.pointerId)
-    } catch {
-      /* synthetic / inactive pointer ids — hold timer still runs */
-    }
     holdId = setTimeout(() => {
       holdId = null
-      unlocked = true
+      armed = true
       btn.classList.remove('is-holding')
-      btn.classList.add('is-unlocked')
-      setTimeout(() => btn.classList.remove('is-unlocked'), 400)
-      onUnlock()
+      btn.classList.add('is-armed')
     }, PARENT_HOLD_MS)
   })
 
-  const cancel = () => {
-    if (unlocked) return
-    clear()
-  }
-  btn.addEventListener('pointerup', cancel)
-  btn.addEventListener('pointercancel', cancel)
-  btn.addEventListener('pointerleave', cancel)
+  btn.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== activePointer) return
+    if (!isOver(e)) reset()
+  })
+
+  btn.addEventListener('pointerup', (e) => {
+    if (e.pointerId !== activePointer) return
+    const open = armed && isOver(e)
+    reset()
+    if (open) {
+      btn.classList.add('is-unlocked')
+      setTimeout(() => btn.classList.remove('is-unlocked'), 400)
+      onUnlock() // must stay synchronous inside pointerup
+    }
+  })
+  btn.addEventListener('pointercancel', reset)
+  btn.addEventListener('pointerleave', (e) => {
+    if (e.pointerId === activePointer) reset()
+  })
+
+  // No long-press system menu while holding
+  btn.addEventListener('contextmenu', (e) => e.preventDefault())
   // Swallow click so a tap never opens the picker
   btn.addEventListener('click', (e) => {
     e.preventDefault()
