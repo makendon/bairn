@@ -33,73 +33,42 @@ await page.waitForSelector('#btn-start')
 await page.click('#btn-start')
 await page.waitForSelector('.puzzle-board')
 
-// Parent ··· discoverability: always-visible “hold to add photos” hint; tap no-op; long-press opens add-photos
+// Parent ···: visible "add photos" hint; tap opens the grown-ups sheet; Add photos opens the picker
 await page.waitForSelector('.parent-hold-hint')
 const parentAffordance = await page.evaluate(() => {
   const hint = document.querySelector('.parent-hold-hint')
-  const btn = document.getElementById('btn-parent')
   const style = hint ? getComputedStyle(hint) : null
   return {
     hintText: (hint?.textContent || '').trim().toLowerCase(),
     hintVisible: !!(hint && style && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0),
-    btnPresent: !!btn,
+    btnPresent: !!document.getElementById('btn-parent'),
   }
 })
 
 await page.evaluate(() => {
   window.__fileClicks = 0
   const input = document.querySelector('input[type="file"]')
-  if (!input) return
-  input.click = () => { window.__fileClicks += 1 }
+  if (input) input.click = () => { window.__fileClicks += 1 }
 })
 
-// Pointer helper at the centre of ··· (release outside the button must not open)
-async function parentPointer(type, pointerId, { off = false } = {}) {
-  await page.evaluate(({ type, pointerId, off }) => {
-    const btn = document.getElementById('btn-parent')
-    const r = btn.getBoundingClientRect()
-    const x = off ? r.left - 60 : r.left + r.width / 2
-    const y = off ? r.bottom + 60 : r.top + r.height / 2
-    btn.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId, pointerType: 'touch', button: 0, clientX: x, clientY: y }))
-    if (type === 'pointerup') btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))
-  }, { type, pointerId, off })
-}
-
-// Quick tap — must not open add-photos
-await parentPointer('pointerdown', 1)
-await parentPointer('pointerup', 1)
-await page.waitForTimeout(100)
+// Tap ··· → sheet opens, picker does not
+await page.tap?.('#btn-parent').catch(() => {})
+if (!(await page.$('#parent-sheet'))) await page.click('#btn-parent')
+const sheetOpens = !!(await page.$('#parent-sheet'))
 const fileClicksAfterTap = await page.evaluate(() => window.__fileClicks)
-
-// Hold well past 700ms — arms, stays armed, but must NOT open while the finger is still down
-await parentPointer('pointerdown', 2)
-await page.waitForTimeout(1500)
-const armedBeforeRelease = await page.evaluate(() => document.getElementById('btn-parent').classList.contains('is-armed'))
-const fileClicksWhileHeld = await page.evaluate(() => window.__fileClicks)
-// Release on the button — opens add-photos exactly once
-await parentPointer('pointerup', 2)
-const fileClicksAfterHold = await page.evaluate(() => window.__fileClicks)
-
-// Hold past 700ms, slide off, release — disarms, nothing opens
-await parentPointer('pointerdown', 3)
-await page.waitForTimeout(780)
-await parentPointer('pointermove', 3, { off: true })
-await parentPointer('pointerup', 3, { off: true })
-const fileClicksAfterSlideOff = await page.evaluate(() => window.__fileClicks)
-
-// Long-press system menu is suppressed on ···
-const parentCallout = await page.evaluate(() => {
-  const btn = document.getElementById('btn-parent')
-  const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
-  btn.dispatchEvent(ev)
-  const cs = getComputedStyle(btn)
-  return {
-    contextmenuPrevented: ev.defaultPrevented,
-    touchCallout: cs.webkitTouchCallout ?? cs.getPropertyValue('-webkit-touch-callout'),
-    userSelect: cs.userSelect || cs.webkitUserSelect,
-    touchAction: cs.touchAction,
-  }
-})
+// Add photos → picker opens once, sheet closes
+await page.click('#sheet-add')
+const fileClicksAfterAdd = await page.evaluate(() => window.__fileClicks)
+const sheetClosedAfterAdd = !(await page.$('#parent-sheet'))
+// Back to puzzle closes without opening
+await page.click('#btn-parent')
+await page.click('#sheet-back')
+const sheetClosedAfterBack = !(await page.$('#parent-sheet'))
+// Untouched sheet closes itself after ~6s
+await page.click('#btn-parent')
+await page.waitForTimeout(6400)
+const sheetAutoClosed = !(await page.$('#parent-sheet'))
+const fileClicksEnd = await page.evaluate(() => window.__fileClicks)
 
 const tileCount = await page.locator('.puzzle-tile').count()
 
@@ -129,6 +98,9 @@ async function solveCurrent() {
 await solveCurrent()
 await page.waitForSelector('.puzzle-board.is-solved')
 await page.waitForSelector('#btn-next')
+await page.waitForTimeout(150)
+// 3 demo photos, first one played: no "add more" prompt yet
+const moreHiddenFirstSolve = await page.evaluate(() => !!document.getElementById('btn-more')?.hidden)
 await page.waitForTimeout(700) // join animation
 
 const gap = await page.evaluate(() => {
@@ -203,17 +175,17 @@ const resumeTiles = await page.locator('.puzzle-tile').count()
 
 const ok =
   tileCount === 4 &&
-  parentAffordance.hintText === 'hold to add photos' &&
+  parentAffordance.hintText === 'add photos' &&
   parentAffordance.hintVisible &&
   parentAffordance.btnPresent &&
+  sheetOpens &&
+  moreHiddenFirstSolve &&
   fileClicksAfterTap === 0 &&
-  armedBeforeRelease &&
-  fileClicksWhileHeld === 0 &&
-  fileClicksAfterHold === 1 &&
-  fileClicksAfterSlideOff === 1 &&
-  parentCallout.contextmenuPrevented &&
-  parentCallout.userSelect === 'none' &&
-  parentCallout.touchAction === 'manipulation' &&
+  fileClicksAfterAdd === 1 &&
+  sheetClosedAfterAdd &&
+  sheetClosedAfterBack &&
+  sheetAutoClosed &&
+  fileClicksEnd === 1 &&
   footerVisible === 1 &&
   coachHidden === 1 &&
   celebrateGone === 0 &&
@@ -238,12 +210,14 @@ const ok =
 console.log(JSON.stringify({
   tileCount,
   parentAffordance,
+  sheetOpens,
+  moreHiddenFirstSolve,
   fileClicksAfterTap,
-  armedBeforeRelease,
-  fileClicksWhileHeld,
-  fileClicksAfterHold,
-  fileClicksAfterSlideOff,
-  parentCallout,
+  fileClicksAfterAdd,
+  sheetClosedAfterAdd,
+  sheetClosedAfterBack,
+  sheetAutoClosed,
+  fileClicksEnd,
   gapAfterSolve: gap,
   footerVisible,
   coachHidden,
