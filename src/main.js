@@ -4,7 +4,6 @@ import {
   blobUrl,
   countPhotos,
   ensureDemoPhotos,
-  listPhotos,
   markUsed,
   pickNextPhoto,
   setMeta,
@@ -260,8 +259,8 @@ function handleSolved() {
 /** Once every photo has been shown this outing, offer more next to Next (plain tap, no hold). */
 async function offerMorePhotosIfAllPlayed() {
   try {
-    const photos = await listPhotos()
-    const allPlayed = photos.length > 0 && photos.every((p) => state.played.has(p.id))
+    const count = await countPhotos() // count only; don't read every photo's bytes
+    const allPlayed = count > 0 && state.played.size >= count
     const more = document.getElementById('btn-more')
     if (more && allPlayed) more.hidden = false
   } catch (err) {
@@ -492,6 +491,7 @@ function openParentSheet() {
   sheet.querySelectorAll('[data-close]').forEach((el) => el.addEventListener('click', closeParentSheet))
   sheet.querySelector('#sheet-add').addEventListener('click', () => {
     closeParentSheet()
+    clearHold() // don't auto-advance under the photo picker
     fileInput.click() // synchronous inside the click: iOS allows the picker
   })
   restart()
