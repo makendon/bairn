@@ -46,25 +46,38 @@ export async function listPhotos() {
   })
 }
 
+/**
+ * Store bytes + type, not the Blob/File itself: iOS Safari can fail to put Blobs into
+ * IndexedDB. Read every file before opening the transaction, since awaiting inside it
+ * would let it auto-commit.
+ */
 export async function addPhotos(files) {
+  const rows = await Promise.all(
+    [...files].map(async (file) => ({
+      data: await file.arrayBuffer(),
+      type: file.type || 'image/jpeg',
+      name: file.name,
+    })),
+  )
   const db = await openDb()
   const tx = db.transaction(STORE, 'readwrite')
   const store = tx.objectStore(STORE)
   const now = Date.now()
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i]
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]
     const id = `photo-${now}-${i}-${Math.random().toString(36).slice(2, 8)}`
     store.put({
       id,
-      blob: file,
-      name: file.name || id,
+      data: row.data,
+      type: row.type,
+      name: row.name || id,
       addedAt: now + i,
       usedCount: 0,
       lastUsedAt: 0,
     })
   }
   await txDone(tx)
-  return files.length
+  return rows.length
 }
 
 export async function markUsed(id) {
@@ -116,7 +129,9 @@ export async function pickNextPhoto(excludeId = null) {
 }
 
 export function blobUrl(photo) {
-  return URL.createObjectURL(photo.blob)
+  // Older rows (desktop) stored the Blob directly; new rows store bytes + type.
+  const blob = photo.blob || new Blob([photo.data], { type: photo.type || 'image/jpeg' })
+  return URL.createObjectURL(blob)
 }
 
 export const DEMO_PATHS = [
@@ -133,6 +148,7 @@ export async function ensureDemoPhotos() {
   const blobs = []
   for (const path of DEMO_PATHS) {
     const res = await fetch(path)
+    if (!res.ok) throw new Error(`demo ${path}: ${res.status}`)
     const blob = await res.blob()
     const file = new File([blob], path.split('/').pop(), { type: blob.type || 'image/svg+xml' })
     blobs.push(file)

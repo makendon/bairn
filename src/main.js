@@ -41,15 +41,20 @@ fileInput.type = 'file'
 fileInput.accept = 'image/*'
 fileInput.multiple = true
 fileInput.hidden = true
-fileInput.setAttribute('capture', false)
 document.body.appendChild(fileInput)
 
 fileInput.addEventListener('change', async () => {
   const files = [...(fileInput.files || [])].filter((f) => f.type.startsWith('image/'))
   fileInput.value = ''
   if (!files.length) return
-  await addPhotos(files)
-  await setMeta('source', 'library')
+  try {
+    await addPhotos(files)
+    await setMeta('source', 'library')
+  } catch (err) {
+    console.error(err)
+    showToast('Could not save those photos. Try again.')
+    return
+  }
   if (state.screen === 'splash' || state.screen === 'boot') {
     goTimerConfirm()
   } else {
