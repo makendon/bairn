@@ -52,7 +52,7 @@ fileInput.addEventListener('change', async () => {
     await setMeta('source', 'library')
   } catch (err) {
     console.error(err)
-    showToast('Could not save those photos. Try again.')
+    showToast(withErrName('Could not save those photos.', err), 8000) // long enough to screenshot
     return
   }
   if (state.screen === 'splash' || state.screen === 'boot') {
@@ -61,6 +61,12 @@ fileInput.addEventListener('change', async () => {
     showToast('Photos added')
   }
 })
+
+/** Error text with the DOMException name, so a phone screenshot is a usable diagnostic. */
+function withErrName(msg, err) {
+  const name = err && (err.name || err.constructor?.name)
+  return name ? `${msg} (${name})` : msg
+}
 
 boot()
 
@@ -75,7 +81,7 @@ async function boot() {
     }
   } catch (err) {
     console.error(err)
-    renderSplash({ error: 'Could not open photo storage.' })
+    renderSplash({ error: withErrName('Could not open photo storage.', err) })
   }
 }
 
@@ -154,7 +160,7 @@ async function loadNextPuzzle() {
     } catch (_) {}
     if (gen !== loadGen) return
     if (!state.puzzle) {
-      renderSplash({ error: 'Could not load photo.' })
+      renderSplash({ error: withErrName('Could not load photo.', err) })
     }
     return
   }
@@ -169,7 +175,15 @@ async function loadNextPuzzle() {
   state.currentPhotoId = photo.id
   state.currentUrl = nextUrl
   await markUsed(photo.id)
-  if (gen !== loadGen) return
+  if (gen !== loadGen) {
+    // A fresher load superseded this one; still free the url we replaced.
+    if (prevUrl && prevUrl !== nextUrl) {
+      try {
+        URL.revokeObjectURL(prevUrl)
+      } catch (_) {}
+    }
+    return
+  }
 
   // Swap only after image is ready. Replace shell in one turn (no mid-frame empty board),
   // sync-paint tiles, then revoke the previous object URL.
@@ -284,7 +298,7 @@ function renderSplash({ loading = false, error = null } = {}) {
       goTimerConfirm({ demo: true })
     } catch (err) {
       console.error(err)
-      renderSplash({ error: 'Could not load demo photos.' })
+      renderSplash({ error: withErrName('Could not load demo photos.', err) })
     }
   })
 }
@@ -392,7 +406,7 @@ function renderTimesUp() {
   document.getElementById('btn-parent')?.addEventListener('click', () => fileInput.click())
 }
 
-function showToast(msg) {
+function showToast(msg, ms = 1800) {
   let t = document.getElementById('toast')
   if (!t) {
     t = document.createElement('div')
@@ -403,7 +417,7 @@ function showToast(msg) {
   t.textContent = msg
   t.classList.add('show')
   clearTimeout(showToast._id)
-  showToast._id = setTimeout(() => t.classList.remove('show'), 1800)
+  showToast._id = setTimeout(() => t.classList.remove('show'), ms)
 }
 
 

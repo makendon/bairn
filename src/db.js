@@ -3,8 +3,12 @@ const DB_VERSION = 1
 const STORE = 'photos'
 const META = 'meta'
 
+/** One shared connection: Safari is touchy about piles of open IndexedDB connections. */
+let dbPromise = null
+
 function openDb() {
-  return new Promise((resolve, reject) => {
+  if (dbPromise) return dbPromise
+  dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
     req.onupgradeneeded = () => {
       const db = req.result
@@ -15,9 +19,17 @@ function openDb() {
         db.createObjectStore(META, { keyPath: 'key' })
       }
     }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
+    req.onsuccess = () => {
+      const db = req.result
+      // If the browser closes it (or another tab upgrades/deletes), reopen next time.
+      db.onclose = () => { dbPromise = null }
+      db.onversionchange = () => { db.close(); dbPromise = null }
+      resolve(db)
+    }
+    req.onerror = () => { dbPromise = null; reject(req.error) }
+    req.onblocked = () => { dbPromise = null; reject(new DOMException('database open blocked', 'BlockedError')) }
   })
+  return dbPromise
 }
 
 function txDone(tx) {
