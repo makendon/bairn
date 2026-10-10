@@ -33,47 +33,42 @@ await page.waitForSelector('#btn-start')
 await page.click('#btn-start')
 await page.waitForSelector('.puzzle-board')
 
-// Parent ··· discoverability: always-visible “hold to add photos” hint; tap no-op; long-press opens add-photos
+// Parent ···: visible "add photos" hint; tap opens the grown-ups sheet; Add photos opens the picker
 await page.waitForSelector('.parent-hold-hint')
 const parentAffordance = await page.evaluate(() => {
   const hint = document.querySelector('.parent-hold-hint')
-  const btn = document.getElementById('btn-parent')
   const style = hint ? getComputedStyle(hint) : null
   return {
     hintText: (hint?.textContent || '').trim().toLowerCase(),
     hintVisible: !!(hint && style && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0),
-    btnPresent: !!btn,
+    btnPresent: !!document.getElementById('btn-parent'),
   }
 })
 
 await page.evaluate(() => {
   window.__fileClicks = 0
   const input = document.querySelector('input[type="file"]')
-  if (!input) return
-  input.click = () => { window.__fileClicks += 1 }
+  if (input) input.click = () => { window.__fileClicks += 1 }
 })
 
-// Quick tap — must not open add-photos
-await page.evaluate(() => {
-  const btn = document.getElementById('btn-parent')
-  btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, button: 0, clientX: 10, clientY: 10 }))
-  btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, button: 0, clientX: 10, clientY: 10 }))
-  btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))
-})
-await page.waitForTimeout(100)
+// Tap ··· → sheet opens, picker does not
+await page.tap?.('#btn-parent').catch(() => {})
+if (!(await page.$('#parent-sheet'))) await page.click('#btn-parent')
+const sheetOpens = !!(await page.$('#parent-sheet'))
 const fileClicksAfterTap = await page.evaluate(() => window.__fileClicks)
-
-// Long-press ~700ms — must open add-photos (fileInput.click)
-await page.evaluate(() => {
-  const btn = document.getElementById('btn-parent')
-  btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 2, button: 0, clientX: 10, clientY: 10 }))
-})
-await page.waitForTimeout(780)
-await page.evaluate(() => {
-  const btn = document.getElementById('btn-parent')
-  btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 2, button: 0, clientX: 10, clientY: 10 }))
-})
-const fileClicksAfterHold = await page.evaluate(() => window.__fileClicks)
+// Add photos → picker opens once, sheet closes
+await page.click('#sheet-add')
+const fileClicksAfterAdd = await page.evaluate(() => window.__fileClicks)
+const sheetClosedAfterAdd = !(await page.$('#parent-sheet'))
+// Back to puzzle closes without opening
+await page.click('#btn-parent')
+await page.click('#sheet-back')
+const sheetClosedAfterBack = !(await page.$('#parent-sheet'))
+// Untouched sheet closes itself after ~6s
+await page.click('#btn-parent')
+await page.waitForTimeout(6400)
+const sheetAutoClosed = !(await page.$('#parent-sheet'))
+const fileClicksEnd = await page.evaluate(() => window.__fileClicks)
 
 const tileCount = await page.locator('.puzzle-tile').count()
 
@@ -103,6 +98,9 @@ async function solveCurrent() {
 await solveCurrent()
 await page.waitForSelector('.puzzle-board.is-solved')
 await page.waitForSelector('#btn-next')
+await page.waitForTimeout(150)
+// 3 demo photos, first one played: no "add more" prompt yet
+const moreHiddenFirstSolve = await page.evaluate(() => !!document.getElementById('btn-more')?.hidden)
 await page.waitForTimeout(700) // join animation
 
 const gap = await page.evaluate(() => {
@@ -177,11 +175,17 @@ const resumeTiles = await page.locator('.puzzle-tile').count()
 
 const ok =
   tileCount === 4 &&
-  parentAffordance.hintText === 'hold to add photos' &&
+  parentAffordance.hintText === 'add photos' &&
   parentAffordance.hintVisible &&
   parentAffordance.btnPresent &&
+  sheetOpens &&
+  moreHiddenFirstSolve &&
   fileClicksAfterTap === 0 &&
-  fileClicksAfterHold === 1 &&
+  fileClicksAfterAdd === 1 &&
+  sheetClosedAfterAdd &&
+  sheetClosedAfterBack &&
+  sheetAutoClosed &&
+  fileClicksEnd === 1 &&
   footerVisible === 1 &&
   coachHidden === 1 &&
   celebrateGone === 0 &&
@@ -206,8 +210,14 @@ const ok =
 console.log(JSON.stringify({
   tileCount,
   parentAffordance,
+  sheetOpens,
+  moreHiddenFirstSolve,
   fileClicksAfterTap,
-  fileClicksAfterHold,
+  fileClicksAfterAdd,
+  sheetClosedAfterAdd,
+  sheetClosedAfterBack,
+  sheetAutoClosed,
+  fileClicksEnd,
   gapAfterSolve: gap,
   footerVisible,
   coachHidden,

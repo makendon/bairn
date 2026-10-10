@@ -246,6 +246,10 @@ body {
   font-size: 1.1rem;
   letter-spacing: 0.08em;
   cursor: pointer;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
 }
 
 .parent-link.bottom {
@@ -256,22 +260,50 @@ body {
   letter-spacing: 0.02em;
 }
 
-.parent-link.is-holding {
-  background: rgba(232, 184, 109, 0.22);
-  color: var(--accent);
-  transform: scale(0.96);
-  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+.parent-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
 }
 
-.parent-gate:has(.parent-link.is-holding) .parent-hold-hint {
-  opacity: 0.85;
-  color: var(--accent);
+.parent-sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  animation: fadeIn 0.2s ease;
 }
 
-.parent-link.is-unlocked {
-  background: rgba(232, 184, 109, 0.35);
-  color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(232, 184, 109, 0.45);
+.parent-sheet-panel {
+  position: relative;
+  width: min(100%, 480px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.25rem 1.25rem calc(1.25rem + var(--safe-bottom));
+  background: var(--bg-elev);
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.35);
+  animation: sheetUp 0.25s ease;
+}
+
+.parent-sheet-panel .btn {
+  min-height: 56px;
+  font-size: 1.1rem;
+}
+
+.parent-sheet-title {
+  margin: 0 0 0.25rem;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+@keyframes sheetUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
 }
 
 /* Flex slot only — keeps the square board centred and full-bleed in remaining safe area */
@@ -452,6 +484,29 @@ body {
   opacity: 0.85;
 }
 
+.reveal-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: center;
+  width: 100%;
+}
+
+.reveal-actions .btn {
+  flex: 1 1 0;
+  width: auto;
+  max-width: 220px;
+  min-height: 56px;
+}
+
+.btn-more {
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.btn-more[hidden] {
+  display: none;
+}
+
 .btn-next {
   width: min(100%, 220px);
   min-height: 56px;
@@ -471,6 +526,8 @@ body {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   transition: transform 0.25s ease;
   z-index: 30;
+  /* never block Next or the board underneath */
+  pointer-events: none;
   border: 1px solid rgba(244, 241, 234, 0.08);
 }
 
