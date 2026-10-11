@@ -442,7 +442,7 @@ function renderPuzzleShell() {
     })
   }
   document.getElementById('bar-start')?.addEventListener('click', () => confirmBackToStart())
-  document.getElementById('end-start')?.addEventListener('click', () => backToStart())
+  document.getElementById('end-start')?.addEventListener('click', () => confirmBackToStart())
   if (state.timer) {
     updateTimerHud({
       label: state.timer.format(),

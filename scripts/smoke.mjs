@@ -156,6 +156,11 @@ const endCard = await page.evaluate(() => ({
   barHidden: document.getElementById('puzzle-bar').hidden,
 }))
 await page.screenshot({ path: '/workspace/bairn/smoke-end-card.png' })
+// end card's Back to start goes through the same confirm
+await page.click('#end-start')
+const endStartConfirms = !!(await page.$('#confirm-sheet'))
+await page.click('#confirm-keep')
+const endCardStaysAfterKeep = await page.evaluate(() => !document.getElementById('confirm-sheet') && !document.getElementById('end-card').hidden)
 await page.click('#btn-again-photos')
 await page.waitForSelector('.puzzle-board:not(.is-solved)')
 const playAgain = await page.evaluate(() => ({
@@ -200,6 +205,7 @@ const ok =
   endCard.shown && endCard.nextHidden && endCard.barHidden &&
   playAgain.fresh && playAgain.endHidden && playAgain.barBack &&
   normalRevealAfterAgain &&
+  endStartConfirms && endCardStaysAfterKeep &&
   backToStart.onStart && backToStart.hasDifficulty && /Ready with \d+ photos?\./.test(backToStart.lede) &&
   footerVisible === 1 &&
   coachHidden === 1 &&
@@ -232,6 +238,8 @@ console.log(JSON.stringify({
   endCard,
   playAgain,
   normalRevealAfterAgain,
+  endStartConfirms,
+  endCardStaysAfterKeep,
   backToStart,
   gapAfterSolve: gap,
   footerVisible,
