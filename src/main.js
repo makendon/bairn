@@ -61,6 +61,8 @@ fileInput.addEventListener('change', async () => {
     goTimerConfirm()
   } else {
     showToast('Photos added')
+    const card = document.getElementById('end-card')
+    if (card && !card.hidden) advanceAfterHold() // new photos are unplayed, so they come next
   }
 })
 
@@ -226,7 +228,10 @@ function advanceAfterHold() {
     renderTimesUp()
     return
   }
-  loadNextPuzzle().catch((err) => {
+  allPhotosPlayed().then((all) => {
+    if (all) state.played = new Set() // same as Play them again
+    return loadNextPuzzle()
+  }).catch((err) => {
     console.error(err)
     showToast(withErrName('Could not load the next photo.', err), 8000)
   })
@@ -247,7 +252,7 @@ function handleSolved() {
 
   const footer = document.getElementById('reveal-footer')
   if (footer) footer.hidden = false
-  offerMorePhotosIfAllPlayed()
+  showEndCardIfAllPlayed()
 
   clearHold()
   state.holdTimerId = setTimeout(() => {
@@ -256,21 +261,42 @@ function handleSolved() {
   }, HOLD_MS)
 }
 
-/** Once every photo has been shown this outing, offer more next to Next (plain tap, no hold). */
-async function offerMorePhotosIfAllPlayed() {
+/** Every photo shown this outing? Count only; never read photo bytes. */
+async function allPhotosPlayed() {
   try {
-    const count = await countPhotos() // count only; don't read every photo's bytes
-    const allPlayed = count > 0 && state.played.size >= count
-    const more = document.getElementById('btn-more')
-    if (more && allPlayed) more.hidden = false
+    const count = await countPhotos()
+    return count > 0 && state.played.size >= count
   } catch (err) {
     console.error(err)
+    return false
   }
+}
+
+/** Swap Next for the end card once every photo has been played. */
+async function showEndCardIfAllPlayed() {
+  if (!(await allPhotosPlayed())) return
+  if (!state.celebrating) return // already moved on
+  const footer = document.getElementById('reveal-footer')
+  const card = document.getElementById('end-card')
+  const bar = document.getElementById('puzzle-bar')
+  if (footer) footer.hidden = true
+  if (bar) bar.hidden = true
+  if (card) card.hidden = false
+}
+
+/** Reset the played set and give a fresh scrambled board. */
+function playThemAgain() {
+  clearHold()
+  state.played = new Set()
+  loadNextPuzzle().catch((err) => {
+    console.error(err)
+    showToast(withErrName('Could not load the next photo.', err), 8000)
+  })
 }
 
 function teardownPuzzle(clearUrl = true) {
   clearHold()
-  closeParentSheet()
+  closeConfirm()
   if (state.puzzle) {
     state.puzzle.destroy()
     state.puzzle = null
@@ -384,10 +410,6 @@ function renderPuzzleShell() {
           <span id="timer-label">${escapeHtml(label)}</span>
         </div>
         <div class="timer-track" aria-hidden="true"><div id="timer-bar" class="timer-bar"></div></div>
-        <div class="parent-gate">
-          <button type="button" class="parent-link" id="btn-parent" aria-label="Grown-ups: add photos" aria-haspopup="dialog">···</button>
-          <span class="parent-hold-hint" aria-hidden="true">add photos</span>
-        </div>
       </header>
       <div class="board-slot">
         <div id="board" class="board" role="application" aria-label="Photo puzzle"></div>
@@ -395,19 +417,32 @@ function renderPuzzleShell() {
       <p class="coach" id="coach">Drag or tap two tiles to swap</p>
       <div id="reveal-footer" class="reveal-footer" hidden>
         <p class="reveal-caption">Have a look</p>
-        <div class="reveal-actions">
-          <button type="button" class="btn ghost btn-more" id="btn-more" hidden>Add more photos?</button>
-          <button type="button" class="btn primary btn-next" id="btn-next">Next</button>
+        <button type="button" class="btn primary btn-next" id="btn-next">Next</button>
+      </div>
+      <div id="end-card" class="end-card" hidden>
+        <p class="end-title">That’s all your photos 🎉</p>
+        <button type="button" class="btn primary" id="btn-again-photos">Play them again</button>
+        <div class="end-row">
+          <button type="button" class="btn ghost" id="end-add">+ Add photos</button>
+          <button type="button" class="btn ghost" id="end-start">Back to start</button>
         </div>
       </div>
+      <nav class="puzzle-bar" id="puzzle-bar" aria-label="Grown-ups">
+        <button type="button" class="bar-btn" id="bar-add">+ add photos</button>
+        <button type="button" class="bar-btn" id="bar-start">⌂ start</button>
+      </nav>
     </main>
   `
-  document.getElementById('btn-parent')?.addEventListener('click', () => openParentSheet())
   document.getElementById('btn-next')?.addEventListener('click', () => advanceAfterHold())
-  document.getElementById('btn-more')?.addEventListener('click', () => {
-    clearHold() // don't auto-advance under the photo picker
-    fileInput.click() // synchronous inside the click: iOS allows the picker
-  })
+  document.getElementById('btn-again-photos')?.addEventListener('click', () => playThemAgain())
+  for (const id of ['bar-add', 'end-add']) {
+    document.getElementById(id)?.addEventListener('click', () => {
+      clearHold() // don't auto-advance under the photo picker
+      fileInput.click() // synchronous inside the click: iOS allows the picker
+    })
+  }
+  document.getElementById('bar-start')?.addEventListener('click', () => confirmBackToStart())
+  document.getElementById('end-start')?.addEventListener('click', () => backToStart())
   if (state.timer) {
     updateTimerHud({
       label: state.timer.format(),
@@ -434,7 +469,7 @@ function renderTimesUp() {
       <button class="parent-link bottom" id="btn-parent">Add more photos</button>
     </main>
   `
-  document.getElementById('btn-again')?.addEventListener('click', () => goTimerConfirm({ returning: true }))
+  document.getElementById('btn-again')?.addEventListener('click', () => backToStart())
   document.getElementById('btn-parent')?.addEventListener('click', () => fileInput.click())
 }
 
@@ -453,48 +488,52 @@ function showToast(msg, ms = 1800) {
 }
 
 
-/**
- * Mid-puzzle "for grown-ups" sheet: a plain tap on ··· opens it; Add photos opens the
- * library straight from its click (the one gesture iOS reliably allows). Closes itself
- * after PARENT_SHEET_MS untouched. Worst case a toddler opens the library and backs out.
- */
-const PARENT_SHEET_MS = 6000
-
-function closeParentSheet() {
-  const sheet = document.getElementById('parent-sheet')
-  if (!sheet) return
-  clearTimeout(closeParentSheet._id)
-  sheet.remove()
+/** "back to start?" confirm: losing the timer mid-outing costs more than a tap, so ask once. */
+function closeConfirm() {
+  document.getElementById('confirm-sheet')?.remove()
 }
 
-function openParentSheet() {
-  closeParentSheet()
+function confirmBackToStart() {
+  closeConfirm()
   const sheet = document.createElement('div')
-  sheet.id = 'parent-sheet'
-  sheet.className = 'parent-sheet'
+  sheet.id = 'confirm-sheet'
+  sheet.className = 'sheet'
   sheet.setAttribute('role', 'dialog')
-  sheet.setAttribute('aria-label', 'For grown-ups')
+  sheet.setAttribute('aria-label', 'Back to start?')
   sheet.innerHTML = `
-    <div class="parent-sheet-scrim" data-close></div>
-    <div class="parent-sheet-panel">
-      <p class="parent-sheet-title">For grown-ups</p>
-      <button type="button" class="btn primary" id="sheet-add">Add photos</button>
-      <button type="button" class="btn ghost" id="sheet-back" data-close>Back to puzzle</button>
+    <div class="sheet-scrim" data-close></div>
+    <div class="sheet-panel">
+      <p class="sheet-title">Back to start? This ends the outing.</p>
+      <button type="button" class="btn primary" id="confirm-keep" data-close>Keep playing</button>
+      <button type="button" class="btn ghost" id="confirm-start">Back to start</button>
     </div>
   `
   document.body.appendChild(sheet)
-  const restart = () => {
-    clearTimeout(closeParentSheet._id)
-    closeParentSheet._id = setTimeout(closeParentSheet, PARENT_SHEET_MS)
+  sheet.querySelectorAll('[data-close]').forEach((el) => el.addEventListener('click', closeConfirm))
+  sheet.querySelector('#confirm-start').addEventListener('click', () => backToStart())
+}
+
+/** End the outing and return to the start screen (difficulty lives there). */
+async function backToStart() {
+  closeConfirm()
+  clearHold()
+  loadGen++ // drop any in-flight load
+  if (state.timer) {
+    state.timer.stop()
+    state.timer = null
   }
-  sheet.addEventListener('pointerdown', restart)
-  sheet.querySelectorAll('[data-close]').forEach((el) => el.addEventListener('click', closeParentSheet))
-  sheet.querySelector('#sheet-add').addEventListener('click', () => {
-    closeParentSheet()
-    clearHold() // don't auto-advance under the photo picker
-    fileInput.click() // synchronous inside the click: iOS allows the picker
-  })
-  restart()
+  teardownPuzzle()
+  let count = 0
+  try {
+    count = await countPhotos()
+  } catch (err) {
+    console.error(err)
+  }
+  if (!count) {
+    renderSplash()
+    return
+  }
+  goTimerConfirm({ returning: true, count })
 }
 
 function escapeHtml(s) {

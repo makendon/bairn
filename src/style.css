@@ -215,26 +215,6 @@ body {
   transition: width 0.25s linear;
 }
 
-.parent-gate {
-  justify-self: end;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.05rem;
-  line-height: 1;
-}
-
-.parent-hold-hint {
-  font-size: 0.58rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: lowercase;
-  color: var(--ink-muted);
-  opacity: 0.5;
-  user-select: none;
-  pointer-events: none;
-}
-
 .parent-link {
   appearance: none;
   border: none;
@@ -260,7 +240,7 @@ body {
   letter-spacing: 0.02em;
 }
 
-.parent-sheet {
+.sheet {
   position: fixed;
   inset: 0;
   z-index: 40;
@@ -269,14 +249,14 @@ body {
   justify-content: center;
 }
 
-.parent-sheet-scrim {
+.sheet-scrim {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.45);
   animation: fadeIn 0.2s ease;
 }
 
-.parent-sheet-panel {
+.sheet-panel {
   position: relative;
   width: min(100%, 480px);
   display: flex;
@@ -289,12 +269,12 @@ body {
   animation: sheetUp 0.25s ease;
 }
 
-.parent-sheet-panel .btn {
+.sheet-panel .btn {
   min-height: 56px;
   font-size: 1.1rem;
 }
 
-.parent-sheet-title {
+.sheet-title {
   margin: 0 0 0.25rem;
   color: var(--ink-muted);
   font-size: 0.9rem;
@@ -484,27 +464,73 @@ body {
   opacity: 0.85;
 }
 
-.reveal-actions {
+.puzzle-bar {
   display: flex;
-  gap: 0.6rem;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   width: 100%;
+  padding: 0.25rem 0 0.15rem;
 }
 
-.reveal-actions .btn {
-  flex: 1 1 0;
-  width: auto;
-  max-width: 220px;
+.puzzle-bar[hidden] {
+  display: none;
+}
+
+.bar-btn {
+  appearance: none;
+  border: 1px solid rgba(244, 241, 234, 0.12);
+  background: rgba(244, 241, 234, 0.04);
+  color: var(--ink-muted);
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.bar-btn:active {
+  transform: scale(0.98);
+}
+
+.end-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.15rem 0 0.35rem;
+  animation: fadeIn 0.35s ease;
+}
+
+.end-card[hidden] {
+  display: none;
+}
+
+.end-title {
+  margin: 0 0 0.15rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.end-card > .btn {
+  width: min(100%, 320px);
   min-height: 56px;
 }
 
-.btn-more {
-  font-size: 0.95rem;
-  white-space: nowrap;
+.end-row {
+  display: flex;
+  gap: 0.6rem;
+  width: min(100%, 320px);
 }
 
-.btn-more[hidden] {
-  display: none;
+.end-row .btn {
+  flex: 1 1 0;
+  min-height: 52px;
+  padding: 0.75rem 0.5rem;
+  font-size: 0.95rem;
+  white-space: nowrap;
 }
 
 .btn-next {

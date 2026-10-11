@@ -33,42 +33,22 @@ await page.waitForSelector('#btn-start')
 await page.click('#btn-start')
 await page.waitForSelector('.puzzle-board')
 
-// Parent ···: visible "add photos" hint; tap opens the grown-ups sheet; Add photos opens the picker
-await page.waitForSelector('.parent-hold-hint')
-const parentAffordance = await page.evaluate(() => {
-  const hint = document.querySelector('.parent-hold-hint')
-  const style = hint ? getComputedStyle(hint) : null
-  return {
-    hintText: (hint?.textContent || '').trim().toLowerCase(),
-    hintVisible: !!(hint && style && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0),
-    btnPresent: !!document.getElementById('btn-parent'),
-  }
-})
-
+// Bar under the puzzle: + add photos opens the picker; ⌂ start asks first
 await page.evaluate(() => {
   window.__fileClicks = 0
   const input = document.querySelector('input[type="file"]')
   if (input) input.click = () => { window.__fileClicks += 1 }
 })
-
-// Tap ··· → sheet opens, picker does not
-await page.tap?.('#btn-parent').catch(() => {})
-if (!(await page.$('#parent-sheet'))) await page.click('#btn-parent')
-const sheetOpens = !!(await page.$('#parent-sheet'))
-const fileClicksAfterTap = await page.evaluate(() => window.__fileClicks)
-// Add photos → picker opens once, sheet closes
-await page.click('#sheet-add')
-const fileClicksAfterAdd = await page.evaluate(() => window.__fileClicks)
-const sheetClosedAfterAdd = !(await page.$('#parent-sheet'))
-// Back to puzzle closes without opening
-await page.click('#btn-parent')
-await page.click('#sheet-back')
-const sheetClosedAfterBack = !(await page.$('#parent-sheet'))
-// Untouched sheet closes itself after ~6s
-await page.click('#btn-parent')
-await page.waitForTimeout(6400)
-const sheetAutoClosed = !(await page.$('#parent-sheet'))
-const fileClicksEnd = await page.evaluate(() => window.__fileClicks)
+const barPresent = await page.evaluate(() => {
+  const bar = document.getElementById('puzzle-bar')
+  return !!bar && !bar.hidden && !document.getElementById('btn-parent')
+})
+await page.click('#bar-add')
+const fileClicksAfterBarAdd = await page.evaluate(() => window.__fileClicks)
+await page.click('#bar-start')
+const confirmOpens = !!(await page.$('#confirm-sheet'))
+await page.click('#confirm-keep')
+const keepPlayingStays = !(await page.$('#confirm-sheet')) && !!(await page.$('.puzzle-board'))
 
 const tileCount = await page.locator('.puzzle-tile').count()
 
@@ -99,8 +79,8 @@ await solveCurrent()
 await page.waitForSelector('.puzzle-board.is-solved')
 await page.waitForSelector('#btn-next')
 await page.waitForTimeout(150)
-// 3 demo photos, first one played: no "add more" prompt yet
-const moreHiddenFirstSolve = await page.evaluate(() => !!document.getElementById('btn-more')?.hidden)
+// 3 demo photos, first one played: no end card yet
+const endHiddenFirstSolve = await page.evaluate(() => !!document.getElementById('end-card')?.hidden)
 await page.waitForTimeout(700) // join animation
 
 const gap = await page.evaluate(() => {
@@ -161,6 +141,43 @@ await page.waitForTimeout(1500)
 const stillHeld = await page.locator('.puzzle-board.is-solved').count()
 const stillNext = await page.locator('#btn-next').count()
 
+// Keep going until every photo is played: the reveal swaps Next for the end card
+for (let i = 0; i < 8; i++) {
+  if (await page.evaluate(() => !document.getElementById('end-card').hidden)) break
+  await page.click('#btn-next')
+  await page.waitForSelector('.puzzle-board:not(.is-solved)')
+  await solveCurrent()
+  await page.waitForSelector('.puzzle-board.is-solved')
+  await page.waitForTimeout(300)
+}
+const endCard = await page.evaluate(() => ({
+  shown: !document.getElementById('end-card').hidden,
+  nextHidden: document.getElementById('reveal-footer').hidden,
+  barHidden: document.getElementById('puzzle-bar').hidden,
+}))
+await page.screenshot({ path: '/workspace/bairn/smoke-end-card.png' })
+await page.click('#btn-again-photos')
+await page.waitForSelector('.puzzle-board:not(.is-solved)')
+const playAgain = await page.evaluate(() => ({
+  fresh: !document.querySelector('.puzzle-board.is-solved'),
+  endHidden: document.getElementById('end-card').hidden,
+  barBack: !document.getElementById('puzzle-bar').hidden,
+}))
+// After play again, the next solve is a normal reveal (played set reset)
+await solveCurrent()
+await page.waitForTimeout(300)
+const normalRevealAfterAgain = await page.evaluate(() => !document.getElementById('reveal-footer').hidden && document.getElementById('end-card').hidden)
+
+// ⌂ start → confirm → back to start ends the outing on the start screen
+await page.click('#bar-start')
+await page.click('#confirm-start')
+await page.waitForSelector('.timer-confirm')
+const backToStart = await page.evaluate(() => ({
+  onStart: !!document.querySelector('.timer-confirm'),
+  hasDifficulty: !!document.querySelector('.diff-row'),
+  lede: document.querySelector('.lede')?.textContent || '',
+}))
+
 // Resume/restart with stored pool → outing-start, one Start tap
 await page.reload({ waitUntil: 'networkidle' })
 await page.waitForSelector('#btn-start')
@@ -175,17 +192,15 @@ const resumeTiles = await page.locator('.puzzle-tile').count()
 
 const ok =
   tileCount === 4 &&
-  parentAffordance.hintText === 'add photos' &&
-  parentAffordance.hintVisible &&
-  parentAffordance.btnPresent &&
-  sheetOpens &&
-  moreHiddenFirstSolve &&
-  fileClicksAfterTap === 0 &&
-  fileClicksAfterAdd === 1 &&
-  sheetClosedAfterAdd &&
-  sheetClosedAfterBack &&
-  sheetAutoClosed &&
-  fileClicksEnd === 1 &&
+  barPresent &&
+  fileClicksAfterBarAdd === 1 &&
+  confirmOpens &&
+  keepPlayingStays &&
+  endHiddenFirstSolve &&
+  endCard.shown && endCard.nextHidden && endCard.barHidden &&
+  playAgain.fresh && playAgain.endHidden && playAgain.barBack &&
+  normalRevealAfterAgain &&
+  backToStart.onStart && backToStart.hasDifficulty && /Ready with \d+ photos?\./.test(backToStart.lede) &&
   footerVisible === 1 &&
   coachHidden === 1 &&
   celebrateGone === 0 &&
@@ -209,15 +224,15 @@ const ok =
 
 console.log(JSON.stringify({
   tileCount,
-  parentAffordance,
-  sheetOpens,
-  moreHiddenFirstSolve,
-  fileClicksAfterTap,
-  fileClicksAfterAdd,
-  sheetClosedAfterAdd,
-  sheetClosedAfterBack,
-  sheetAutoClosed,
-  fileClicksEnd,
+  barPresent,
+  fileClicksAfterBarAdd,
+  confirmOpens,
+  keepPlayingStays,
+  endHiddenFirstSolve,
+  endCard,
+  playAgain,
+  normalRevealAfterAgain,
+  backToStart,
   gapAfterSolve: gap,
   footerVisible,
   coachHidden,
