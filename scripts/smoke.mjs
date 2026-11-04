@@ -33,7 +33,7 @@ await page.waitForSelector('#btn-start')
 await page.click('#btn-start')
 await page.waitForSelector('.puzzle-board')
 
-// Bar under the puzzle: + add photos opens the picker; ⌂ start asks first
+// Bar under the puzzle (demo outing): "use her photos" asks first; ⌂ start asks first
 await page.evaluate(() => {
   window.__fileClicks = 0
   const input = document.querySelector('input[type="file"]')
@@ -41,10 +41,18 @@ await page.evaluate(() => {
 })
 const barPresent = await page.evaluate(() => {
   const bar = document.getElementById('puzzle-bar')
-  return !!bar && !bar.hidden && !document.getElementById('btn-parent')
+  const add = document.getElementById('bar-add')
+  return {
+    ok: !!bar && !bar.hidden && !document.getElementById('btn-parent'),
+    addLabel: (add?.textContent || '').trim().toLowerCase(),
+  }
 })
 await page.click('#bar-add')
-const fileClicksAfterBarAdd = await page.evaluate(() => window.__fileClicks)
+const leaveDemoOpens = !!(await page.$('#confirm-sheet'))
+const fileClicksAfterBarAdd = await page.evaluate(() => window.__fileClicks) // still 0: confirm first
+await page.click('#confirm-leave')
+const fileClicksAfterLeave = await page.evaluate(() => window.__fileClicks) // 1: picker after confirm
+await page.evaluate(() => document.getElementById('confirm-sheet')?.remove())
 await page.click('#bar-start')
 const confirmOpens = !!(await page.$('#confirm-sheet'))
 await page.click('#confirm-keep')
@@ -173,32 +181,38 @@ await solveCurrent()
 await page.waitForTimeout(300)
 const normalRevealAfterAgain = await page.evaluate(() => !document.getElementById('reveal-footer').hidden && document.getElementById('end-card').hidden)
 
-// ⌂ start → confirm → back to start ends the outing on the start screen
+// ⌂ start → confirm → back to start: demo never persisted, so splash comes back
 await page.click('#bar-start')
 await page.click('#confirm-start')
-await page.waitForSelector('.timer-confirm')
+await page.waitForSelector('#btn-demo')
 const backToStart = await page.evaluate(() => ({
-  onStart: !!document.querySelector('.timer-confirm'),
-  hasDifficulty: !!document.querySelector('.diff-row'),
-  lede: document.querySelector('.lede')?.textContent || '',
+  onSplash: !!document.getElementById('btn-demo'),
+  hasUsePhotos: !!document.getElementById('btn-photos'),
+  noOuting: !document.querySelector('.timer-confirm'),
 }))
 
-// Resume/restart with stored pool → outing-start, one Start tap
+// Demo never hits IndexedDB: reload returns to splash, not the outing
 await page.reload({ waitUntil: 'networkidle' })
-await page.waitForSelector('#btn-start')
+await page.waitForSelector('#btn-demo')
 const resumeScreen = await page.evaluate(() => ({
   hasStart: !!document.getElementById('btn-start'),
   hasDemo: !!document.getElementById('btn-demo'),
   isOuting: !!document.querySelector('.timer-confirm'),
 }))
+// Library path: add photos, then reload should land on outing
+await page.setInputFiles('input[type="file"]', '/tmp/one.jpg')
+await page.waitForSelector('#btn-start')
 await page.click('#btn-start')
 await page.waitForSelector('.puzzle-board')
 const resumeTiles = await page.locator('.puzzle-tile').count()
 
 const ok =
   tileCount === 4 &&
-  barPresent &&
-  fileClicksAfterBarAdd === 1 &&
+  barPresent.ok &&
+  barPresent.addLabel === 'use her photos' &&
+  leaveDemoOpens &&
+  fileClicksAfterBarAdd === 0 &&
+  fileClicksAfterLeave === 1 &&
   confirmOpens &&
   keepPlayingStays &&
   endHiddenFirstSolve &&
@@ -206,7 +220,7 @@ const ok =
   playAgain.fresh && playAgain.endHidden && playAgain.barBack &&
   normalRevealAfterAgain &&
   endStartConfirms && endCardStaysAfterKeep &&
-  backToStart.onStart && backToStart.hasDifficulty && /Ready with \d+ photos?\./.test(backToStart.lede) &&
+  backToStart.onSplash && backToStart.hasUsePhotos && backToStart.noOuting &&
   footerVisible === 1 &&
   coachHidden === 1 &&
   celebrateGone === 0 &&
@@ -222,16 +236,18 @@ const ok =
   tileVisibility.square &&
   tileVisibility.centred &&
   tileVisibility.fullBleed &&
-  resumeScreen.hasStart &&
-  !resumeScreen.hasDemo &&
-  resumeScreen.isOuting &&
+  !resumeScreen.hasStart &&
+  resumeScreen.hasDemo &&
+  !resumeScreen.isOuting &&
   resumeTiles === 4 &&
   errors.length === 0
 
 console.log(JSON.stringify({
   tileCount,
   barPresent,
+  leaveDemoOpens,
   fileClicksAfterBarAdd,
+  fileClicksAfterLeave,
   confirmOpens,
   keepPlayingStays,
   endHiddenFirstSolve,

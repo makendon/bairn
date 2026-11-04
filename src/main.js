@@ -2,8 +2,10 @@ import './style.css'
 import {
   addPhotos,
   blobUrl,
+  clearAllPhotos,
   countPhotos,
-  ensureDemoPhotos,
+  getMeta,
+  loadDemoPhotos,
   markUsed,
   pickNextPhoto,
   setMeta,
@@ -36,6 +38,11 @@ const state = {
   holdTimerId: null,
   /** Photo ids shown this outing, so the reveal can offer more once all are played. */
   played: new Set(),
+  /** Demo sandbox: in-memory only for this outing. Never written to IndexedDB. */
+  demo: false,
+  demoPhotos: [],
+  /** After confirm, next file-input change leaves demo and saves her photos. */
+  leavingDemo: false,
 }
 
 const fileInput = document.createElement('input')
@@ -48,17 +55,32 @@ document.body.appendChild(fileInput)
 fileInput.addEventListener('change', async () => {
   const files = [...(fileInput.files || [])].filter((f) => f.type.startsWith('image/'))
   fileInput.value = ''
-  if (!files.length) return
+  if (!files.length) {
+    state.leavingDemo = false
+    return
+  }
+  const fromDemo = state.demo || state.leavingDemo
   try {
     await addPhotos(files)
     await setMeta('source', 'library')
   } catch (err) {
     console.error(err)
     showToast(withErrName('Could not save those photos.', err), 8000) // long enough to screenshot
+    state.leavingDemo = false
     return
   }
+  dropDemo()
   if (state.screen === 'splash' || state.screen === 'boot') {
     goTimerConfirm()
+  } else if (fromDemo) {
+    // Left the demo sandbox: continue this outing on her photos.
+    showToast('Photos added')
+    state.played = new Set()
+    state.currentPhotoId = null
+    loadNextPuzzle().catch((err) => {
+      console.error(err)
+      showToast(withErrName('Could not load the next photo.', err), 8000)
+    })
   } else {
     showToast('Photos added')
     const card = document.getElementById('end-card')
@@ -72,11 +94,54 @@ function withErrName(msg, err) {
   return name ? `${msg} (${name})` : msg
 }
 
+function dropDemo() {
+  state.demo = false
+  state.demoPhotos = []
+  state.leavingDemo = false
+}
+
+/** Next photo from the demo sandbox or the library pool. */
+async function nextPhoto(excludeId = null) {
+  if (state.demo) {
+    const photos = state.demoPhotos
+    if (!photos.length) return null
+    const pool = excludeId ? photos.filter((p) => p.id !== excludeId) : photos
+    const candidates = pool.length ? pool : photos
+    const minUsed = Math.min(...candidates.map((p) => p.usedCount || 0))
+    const least = candidates.filter((p) => (p.usedCount || 0) === minUsed)
+    return least[Math.floor(Math.random() * least.length)]
+  }
+  return pickNextPhoto(excludeId)
+}
+
+async function noteUsed(id) {
+  if (state.demo) {
+    const row = state.demoPhotos.find((p) => p.id === id)
+    if (row) {
+      row.usedCount = (row.usedCount || 0) + 1
+      row.lastUsedAt = Date.now()
+    }
+    return
+  }
+  await markUsed(id)
+}
+
+async function photoCount() {
+  if (state.demo) return state.demoPhotos.length
+  return countPhotos()
+}
+
+
 boot()
 
 async function boot() {
   renderSplash({ loading: true })
   try {
+    // Older builds wrote demos into IndexedDB. Wipe those so splash comes back.
+    if ((await getMeta('source')) === 'demo') {
+      await clearAllPhotos()
+      await setMeta('source', null)
+    }
     const n = await countPhotos()
     if (n > 0) {
       goTimerConfirm({ returning: true, count: n })
@@ -148,7 +213,7 @@ async function loadNextPuzzle() {
 
   const gen = ++loadGen
   // Keep prior board painted until the next photo is decoded (Ash: no blank tiles).
-  const photo = await pickNextPhoto(state.currentPhotoId)
+  const photo = await nextPhoto(state.currentPhotoId)
   if (gen !== loadGen) return
   if (!photo) {
     teardownPuzzle()
@@ -184,7 +249,7 @@ async function loadNextPuzzle() {
   state.played.add(photo.id)
   state.currentPhotoId = photo.id
   state.currentUrl = nextUrl
-  await markUsed(photo.id)
+  await noteUsed(photo.id)
   if (gen !== loadGen) {
     // A fresher load superseded this one; still free the url we replaced.
     if (prevUrl && prevUrl !== nextUrl) {
@@ -264,7 +329,7 @@ function handleSolved() {
 /** Every photo shown this outing? Count only; never read photo bytes. */
 async function allPhotosPlayed() {
   try {
-    const count = await countPhotos()
+    const count = await photoCount()
     return count > 0 && state.played.size >= count
   } catch (err) {
     console.error(err)
@@ -345,10 +410,12 @@ function renderSplash({ loading = false, error = null } = {}) {
     const btn = document.getElementById('btn-demo')
     if (btn) btn.disabled = true
     try {
-      await ensureDemoPhotos()
+      state.demoPhotos = await loadDemoPhotos()
+      state.demo = true
       goTimerConfirm({ demo: true })
     } catch (err) {
       console.error(err)
+      dropDemo()
       renderSplash({ error: withErrName('Could not load demo photos.', err) })
     }
   })
@@ -379,7 +446,7 @@ function renderTimerConfirm({ returning = false, demo = false, count = 0 } = {})
       <div class="diff-row" role="group" aria-label="Difficulty">${pills}</div>
       <div class="actions">
         <button class="btn primary" id="btn-start">Start</button>
-        <button class="btn ghost" id="btn-add" title="Parent">Add more photos</button>
+        ${demo ? '' : '<button class="btn ghost" id="btn-add" title="Parent">Add more photos</button>'}
       </div>
     </main>
   `
@@ -420,15 +487,15 @@ function renderPuzzleShell() {
         <button type="button" class="btn primary btn-next" id="btn-next">Next</button>
       </div>
       <div id="end-card" class="end-card" hidden>
-        <p class="end-title">That’s all your photos 🎉</p>
+        <p class="end-title">${state.demo ? 'That’s the demo 🎉' : 'That’s all your photos 🎉'}</p>
         <button type="button" class="btn primary" id="btn-again-photos">Play them again</button>
         <div class="end-row">
-          <button type="button" class="btn ghost" id="end-add">+ Add photos</button>
+          <button type="button" class="btn ghost" id="end-add">${state.demo ? 'Use her photos' : '+ Add photos'}</button>
           <button type="button" class="btn ghost" id="end-start">Back to start</button>
         </div>
       </div>
       <nav class="puzzle-bar" id="puzzle-bar" aria-label="Grown-ups">
-        <button type="button" class="bar-btn" id="bar-add">+ add photos</button>
+        <button type="button" class="bar-btn" id="bar-add">${state.demo ? 'use her photos' : '+ add photos'}</button>
         <button type="button" class="bar-btn" id="bar-start">⌂ start</button>
       </nav>
     </main>
@@ -437,6 +504,10 @@ function renderPuzzleShell() {
   document.getElementById('btn-again-photos')?.addEventListener('click', () => playThemAgain())
   for (const id of ['bar-add', 'end-add']) {
     document.getElementById(id)?.addEventListener('click', () => {
+      if (state.demo) {
+        confirmLeaveDemo()
+        return
+      }
       clearHold() // don't auto-advance under the photo picker
       fileInput.click() // synchronous inside the click: iOS allows the picker
     })
@@ -466,11 +537,14 @@ function renderTimesUp() {
       <div class="actions">
         <button class="btn primary" id="btn-again">Start again</button>
       </div>
-      <button class="parent-link bottom" id="btn-parent">Add more photos</button>
+      <button class="parent-link bottom" id="btn-parent">${state.demo ? 'Use her photos' : 'Add more photos'}</button>
     </main>
   `
   document.getElementById('btn-again')?.addEventListener('click', () => backToStart())
-  document.getElementById('btn-parent')?.addEventListener('click', () => fileInput.click())
+  document.getElementById('btn-parent')?.addEventListener('click', () => {
+    if (state.demo) confirmLeaveDemo()
+    else fileInput.click()
+  })
 }
 
 function showToast(msg, ms = 1800) {
@@ -514,6 +588,32 @@ function confirmBackToStart() {
 }
 
 /** End the outing and return to the start screen (difficulty lives there). */
+/** Leave the demo sandbox for her real photos. */
+function confirmLeaveDemo() {
+  closeConfirm()
+  clearHold() // don't auto-advance under the confirm / picker
+  const sheet = document.createElement('div')
+  sheet.id = 'confirm-sheet'
+  sheet.className = 'sheet'
+  sheet.setAttribute('role', 'dialog')
+  sheet.setAttribute('aria-label', 'Leave the demo?')
+  sheet.innerHTML = `
+    <div class="sheet-scrim" data-close></div>
+    <div class="sheet-panel">
+      <p class="sheet-title">Leave the demo? Her photos replace these.</p>
+      <button type="button" class="btn primary" id="confirm-leave">Use her photos</button>
+      <button type="button" class="btn ghost" data-close>Keep the demo</button>
+    </div>
+  `
+  document.body.appendChild(sheet)
+  sheet.querySelectorAll('[data-close]').forEach((el) => el.addEventListener('click', closeConfirm))
+  sheet.querySelector('#confirm-leave').addEventListener('click', () => {
+    closeConfirm()
+    state.leavingDemo = true
+    fileInput.click() // synchronous inside the click: iOS allows the picker
+  })
+}
+
 async function backToStart() {
   closeConfirm()
   clearHold()
@@ -523,6 +623,7 @@ async function backToStart() {
     state.timer = null
   }
   teardownPuzzle()
+  dropDemo() // demo never persists; splash comes back when the store is empty
   let count = 0
   try {
     count = await countPhotos()

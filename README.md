@@ -23,7 +23,7 @@ Dev server binds `0.0.0.0:5173` (phone-friendly on the same network). Local: htt
 ## Preview notes
 
 - **Desktop / Computer tab:** use **Try demo** — built-in illustration pack, no gallery needed.  
-- **Phone:** first visit → **Use photos** → multi-select from gallery once; pool stored in IndexedDB. Thereafter auto-pick. A quiet bar under the puzzle: **+ add photos** opens the library, **⌂ start** asks before ending the outing. Once every photo has been played, the reveal shows an end card (play them again, add photos, back to start).
+- **Phone:** first visit → **Use photos** → multi-select from gallery once; pool stored in IndexedDB. Thereafter auto-pick. A quiet bar under the puzzle: **+ add photos** opens the library, **⌂ start** asks before ending the outing. **Try demo** is an in-memory sandbox (never saved); during a demo the bar says **use her photos** and asks before replacing the demo. Once every photo has been played, the reveal shows an end card (play them again, add photos, back to start).
 
 ## Stack
 

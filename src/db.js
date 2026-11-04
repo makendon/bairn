@@ -153,19 +153,33 @@ export const DEMO_PATHS = [
   '/demo/garden.svg',
 ]
 
-export async function ensureDemoPhotos() {
-  const existing = await countPhotos()
-  if (existing > 0) return existing
-
-  const blobs = []
-  for (const path of DEMO_PATHS) {
+/**
+ * Demo is a sandbox for one outing only — never written to IndexedDB.
+ * Returns in-memory photo rows (Blob + id) for the caller to keep in state.
+ */
+export async function loadDemoPhotos() {
+  const photos = []
+  for (let i = 0; i < DEMO_PATHS.length; i++) {
+    const path = DEMO_PATHS[i]
     const res = await fetch(path)
     if (!res.ok) throw new Error(`demo ${path}: ${res.status}`)
     const blob = await res.blob()
-    const file = new File([blob], path.split('/').pop(), { type: blob.type || 'image/svg+xml' })
-    blobs.push(file)
+    photos.push({
+      id: `demo-${i}-${path.split('/').pop()}`,
+      blob,
+      type: blob.type || 'image/svg+xml',
+      name: path.split('/').pop(),
+      usedCount: 0,
+      lastUsedAt: 0,
+    })
   }
-  await addPhotos(blobs)
-  await setMeta('source', 'demo')
-  return blobs.length
+  return photos
+}
+
+/** Wipe every photo row. Used only to clear leftover demo rows from older builds. */
+export async function clearAllPhotos() {
+  const db = await openDb()
+  const tx = db.transaction(STORE, 'readwrite')
+  tx.objectStore(STORE).clear()
+  await txDone(tx)
 }
