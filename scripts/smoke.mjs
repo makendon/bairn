@@ -30,6 +30,18 @@ await page.reload({ waitUntil: 'networkidle' })
 await page.waitForSelector('#btn-demo')
 await page.click('#btn-demo')
 await page.waitForSelector('#btn-start')
+const outingLength = await page.evaluate(() => {
+  const pills = [...document.querySelectorAll('.diff-pill[data-mins]')]
+  const selected = pills.find((b) => b.classList.contains('is-selected'))
+  return {
+    values: pills.map((b) => Number(b.dataset.mins)),
+    defaultMin: selected ? Number(selected.dataset.mins) : null,
+    title: document.getElementById('outing-title')?.textContent || '',
+  }
+})
+await page.click('.diff-pill[data-mins="10"]')
+const titleAfter10 = await page.evaluate(() => document.getElementById('outing-title')?.textContent || '')
+await page.click('.diff-pill[data-mins="15"]') // back to default for the rest of the run
 await page.click('#btn-start')
 await page.waitForSelector('.puzzle-board')
 
@@ -208,6 +220,10 @@ const resumeTiles = await page.locator('.puzzle-tile').count()
 
 const ok =
   tileCount === 4 &&
+  outingLength.values.join(',') === '10,15,25' &&
+  outingLength.defaultMin === 15 &&
+  outingLength.title.includes('15') &&
+  titleAfter10.includes('10') &&
   barPresent.ok &&
   barPresent.addLabel === 'use her photos' &&
   leaveDemoOpens &&
@@ -244,6 +260,8 @@ const ok =
 
 console.log(JSON.stringify({
   tileCount,
+  outingLength,
+  titleAfter10,
   barPresent,
   leaveDemoOpens,
   fileClicksAfterBarAdd,

@@ -10,7 +10,7 @@ import {
   pickNextPhoto,
   setMeta,
 } from './db.js'
-import { createOutingTimer, DEFAULT_MINUTES } from './timer.js'
+import { createOutingTimer, DEFAULT_MINUTES, OUTING_MINUTES } from './timer.js'
 import { createPuzzle } from './puzzle.js'
 
 /** Hold the completed photo so the child can look — Next skips. */
@@ -428,6 +428,7 @@ function renderTimerConfirm({ returning = false, demo = false, count = 0 } = {})
       ? 'Demo photos loaded.'
       : 'Photos ready.'
   if (!DIFFICULTY[state.difficulty]) state.difficulty = DEFAULT_DIFFICULTY
+  if (!OUTING_MINUTES.includes(state.timerMinutes)) state.timerMinutes = DEFAULT_MINUTES
   const pills = Object.values(DIFFICULTY)
     .map(
       (d) => `
@@ -437,11 +438,19 @@ function renderTimerConfirm({ returning = false, demo = false, count = 0 } = {})
         </button>`,
     )
     .join('')
+  const timePills = OUTING_MINUTES.map(
+    (m) => `
+        <button type="button" class="diff-pill${m === state.timerMinutes ? ' is-selected' : ''}" data-mins="${m}" aria-pressed="${m === state.timerMinutes}">
+          <span class="diff-label">${m} min</span>
+        </button>`,
+  ).join('')
   app.innerHTML = `
     <main class="screen timer-confirm safe">
       <p class="eyebrow">Outing</p>
-      <h1 class="title sm">About ${DEFAULT_MINUTES} minutes</h1>
+      <h1 class="title sm" id="outing-title">About ${state.timerMinutes} minutes</h1>
       <p class="lede">${escapeHtml(note)} Set once, then walk away.</p>
+      <p class="field-label">Length</p>
+      <div class="diff-row" role="group" aria-label="Outing length">${timePills}</div>
       <p class="field-label">Difficulty</p>
       <div class="diff-row" role="group" aria-label="Difficulty">${pills}</div>
       <div class="actions">
@@ -450,20 +459,29 @@ function renderTimerConfirm({ returning = false, demo = false, count = 0 } = {})
       </div>
     </main>
   `
-  document.querySelectorAll('.diff-pill').forEach((btn) => {
+  document.querySelectorAll('.diff-pill[data-mins]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.timerMinutes = Number(btn.dataset.mins) || DEFAULT_MINUTES
+      const title = document.getElementById('outing-title')
+      if (title) title.textContent = `About ${state.timerMinutes} minutes`
+      document.querySelectorAll('.diff-pill[data-mins]').forEach((b) => {
+        const on = Number(b.dataset.mins) === state.timerMinutes
+        b.classList.toggle('is-selected', on)
+        b.setAttribute('aria-pressed', String(on))
+      })
+    })
+  })
+  document.querySelectorAll('.diff-pill[data-diff]').forEach((btn) => {
     btn.addEventListener('click', () => {
       state.difficulty = btn.dataset.diff || DEFAULT_DIFFICULTY
-      document.querySelectorAll('.diff-pill').forEach((b) => {
+      document.querySelectorAll('.diff-pill[data-diff]').forEach((b) => {
         const on = b.dataset.diff === state.difficulty
         b.classList.toggle('is-selected', on)
         b.setAttribute('aria-pressed', String(on))
       })
     })
   })
-  document.getElementById('btn-start')?.addEventListener('click', () => {
-    state.timerMinutes = DEFAULT_MINUTES
-    startSession()
-  })
+  document.getElementById('btn-start')?.addEventListener('click', () => startSession())
   document.getElementById('btn-add')?.addEventListener('click', () => fileInput.click())
 }
 

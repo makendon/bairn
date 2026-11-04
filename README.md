@@ -9,7 +9,7 @@ Calm photo puzzle for a short parent break. One interactive loop on the phone �
 3. Auto-pick a recent image  
 4. Difficulty once at outing start (default easy = 2×2 / 4 tiles; medium 3×3; hard 4×4)  
 5. Solve → full photo hold ~10s or Next, then next scramble  
-6. Soft outing timer (~25 min) ends the session  
+6. Soft outing timer (10 / 15 / 25 min, default 15) ends the session  
 
 ## Run
 
