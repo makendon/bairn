@@ -1,4 +1,7 @@
-const DEFAULT_MINUTES = 25
+const DEFAULT_MINUTES = 15
+
+/** Outing length presets (set once with difficulty). */
+const OUTING_MINUTES = [10, 15, 25]
 
 export function createOutingTimer({
   minutes = DEFAULT_MINUTES,
@@ -60,4 +63,4 @@ export function createOutingTimer({
   return api
 }
 
-export { DEFAULT_MINUTES }
+export { DEFAULT_MINUTES, OUTING_MINUTES }

@@ -9,7 +9,7 @@ Calm photo puzzle for a short parent break. One interactive loop on the phone �
 3. Auto-pick a recent image  
 4. Difficulty once at outing start (default easy = 2×2 / 4 tiles; medium 3×3; hard 4×4)  
 5. Solve → full photo hold ~10s or Next, then next scramble  
-6. Soft outing timer (~25 min) ends the session  
+6. Soft outing timer (10 / 15 / 25 min, default 15) ends the session  
 
 ## Run
 
@@ -23,7 +23,7 @@ Dev server binds `0.0.0.0:5173` (phone-friendly on the same network). Local: htt
 ## Preview notes
 
 - **Desktop / Computer tab:** use **Try demo** — built-in illustration pack, no gallery needed.  
-- **Phone:** first visit → **Use photos** → multi-select from gallery once; pool stored in IndexedDB. Thereafter auto-pick. Quiet mid-puzzle **···** with a “hold to add photos” hint — long-press (~700ms) adds photos; tap does nothing (kid-safe).
+- **Phone:** first visit → **Use photos** → multi-select from gallery once; pool stored in IndexedDB. Thereafter auto-pick. A quiet bar under the puzzle: **+ add photos** opens the library, **⌂ start** asks before ending the outing. **Try demo** is an in-memory sandbox (never saved); during a demo the bar says **use her photos** and asks before replacing the demo. Once every photo has been played, the reveal shows an end card (play them again, add photos, back to start).
 
 ## Stack
 

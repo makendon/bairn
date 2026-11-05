@@ -2,13 +2,15 @@ import './style.css'
 import {
   addPhotos,
   blobUrl,
+  clearAllPhotos,
   countPhotos,
-  ensureDemoPhotos,
+  getMeta,
+  loadDemoPhotos,
   markUsed,
   pickNextPhoto,
   setMeta,
 } from './db.js'
-import { createOutingTimer, DEFAULT_MINUTES } from './timer.js'
+import { createOutingTimer, DEFAULT_MINUTES, OUTING_MINUTES } from './timer.js'
 import { createPuzzle } from './puzzle.js'
 
 /** Hold the completed photo so the child can look — Next skips. */
@@ -34,6 +36,13 @@ const state = {
   puzzle: null,
   celebrating: false,
   holdTimerId: null,
+  /** Photo ids shown this outing, so the reveal can offer more once all are played. */
+  played: new Set(),
+  /** Demo sandbox: in-memory only for this outing. Never written to IndexedDB. */
+  demo: false,
+  demoPhotos: [],
+  /** After confirm, next file-input change leaves demo and saves her photos. */
+  leavingDemo: false,
 }
 
 const fileInput = document.createElement('input')
@@ -41,27 +50,98 @@ fileInput.type = 'file'
 fileInput.accept = 'image/*'
 fileInput.multiple = true
 fileInput.hidden = true
-fileInput.setAttribute('capture', false)
 document.body.appendChild(fileInput)
 
 fileInput.addEventListener('change', async () => {
   const files = [...(fileInput.files || [])].filter((f) => f.type.startsWith('image/'))
   fileInput.value = ''
-  if (!files.length) return
-  await addPhotos(files)
-  await setMeta('source', 'library')
+  if (!files.length) {
+    state.leavingDemo = false
+    return
+  }
+  const fromDemo = state.demo || state.leavingDemo
+  try {
+    await addPhotos(files)
+    await setMeta('source', 'library')
+  } catch (err) {
+    console.error(err)
+    showToast(withErrName('Could not save those photos.', err), 8000) // long enough to screenshot
+    state.leavingDemo = false
+    return
+  }
+  dropDemo()
   if (state.screen === 'splash' || state.screen === 'boot') {
     goTimerConfirm()
+  } else if (fromDemo) {
+    // Left the demo sandbox: continue this outing on her photos.
+    showToast('Photos added')
+    state.played = new Set()
+    state.currentPhotoId = null
+    loadNextPuzzle().catch((err) => {
+      console.error(err)
+      showToast(withErrName('Could not load the next photo.', err), 8000)
+    })
   } else {
     showToast('Photos added')
+    const card = document.getElementById('end-card')
+    if (card && !card.hidden) advanceAfterHold() // new photos are unplayed, so they come next
   }
 })
+
+/** Error text with the DOMException name, so a phone screenshot is a usable diagnostic. */
+function withErrName(msg, err) {
+  const name = err && (err.name || err.constructor?.name)
+  return name ? `${msg} (${name})` : msg
+}
+
+function dropDemo() {
+  state.demo = false
+  state.demoPhotos = []
+  state.leavingDemo = false
+}
+
+/** Next photo from the demo sandbox or the library pool. */
+async function nextPhoto(excludeId = null) {
+  if (state.demo) {
+    const photos = state.demoPhotos
+    if (!photos.length) return null
+    const pool = excludeId ? photos.filter((p) => p.id !== excludeId) : photos
+    const candidates = pool.length ? pool : photos
+    const minUsed = Math.min(...candidates.map((p) => p.usedCount || 0))
+    const least = candidates.filter((p) => (p.usedCount || 0) === minUsed)
+    return least[Math.floor(Math.random() * least.length)]
+  }
+  return pickNextPhoto(excludeId)
+}
+
+async function noteUsed(id) {
+  if (state.demo) {
+    const row = state.demoPhotos.find((p) => p.id === id)
+    if (row) {
+      row.usedCount = (row.usedCount || 0) + 1
+      row.lastUsedAt = Date.now()
+    }
+    return
+  }
+  await markUsed(id)
+}
+
+async function photoCount() {
+  if (state.demo) return state.demoPhotos.length
+  return countPhotos()
+}
+
 
 boot()
 
 async function boot() {
   renderSplash({ loading: true })
   try {
+    // Older builds wrote demos into IndexedDB. Wipe those so splash comes back.
+    if ((await getMeta('source')) === 'demo') {
+      await clearAllPhotos()
+      await setMeta('source', null)
+    }
     const n = await countPhotos()
     if (n > 0) {
       goTimerConfirm({ returning: true, count: n })
@@ -70,7 +150,7 @@ async function boot() {
     }
   } catch (err) {
     console.error(err)
-    renderSplash({ error: 'Could not open photo storage.' })
+    renderSplash({ error: withErrName('Could not open photo storage.', err) })
   }
 }
 
@@ -93,6 +173,7 @@ function startSession() {
     },
   })
   state.timer.start()
+  state.played = new Set()
   loadNextPuzzle()
 }
 
@@ -115,7 +196,8 @@ function loadImage(url) {
         done()
       }
     }
-    img.onerror = () => reject(new Error('image load failed'))
+    img.onerror = () => reject(new DOMException('image load failed', 'EncodingError'))
+    setTimeout(() => reject(new DOMException('image load timed out', 'TimeoutError')), 8000)
     img.src = url
   })
 }
@@ -131,7 +213,7 @@ async function loadNextPuzzle() {
 
   const gen = ++loadGen
   // Keep prior board painted until the next photo is decoded (Ash: no blank tiles).
-  const photo = await pickNextPhoto(state.currentPhotoId)
+  const photo = await nextPhoto(state.currentPhotoId)
   if (gen !== loadGen) return
   if (!photo) {
     teardownPuzzle()
@@ -149,7 +231,10 @@ async function loadNextPuzzle() {
     } catch (_) {}
     if (gen !== loadGen) return
     if (!state.puzzle) {
-      renderSplash({ error: 'Could not load photo.' })
+      renderSplash({ error: withErrName('Could not load photo.', err) })
+    } else {
+      // Keep the solved board, but never fail silently: say so, and let Next retry.
+      showToast(withErrName('Could not load the next photo.', err), 8000)
     }
     return
   }
@@ -161,10 +246,19 @@ async function loadNextPuzzle() {
   }
 
   const prevUrl = state.currentUrl
+  state.played.add(photo.id)
   state.currentPhotoId = photo.id
   state.currentUrl = nextUrl
-  await markUsed(photo.id)
-  if (gen !== loadGen) return
+  await noteUsed(photo.id)
+  if (gen !== loadGen) {
+    // A fresher load superseded this one; still free the url we replaced.
+    if (prevUrl && prevUrl !== nextUrl) {
+      try {
+        URL.revokeObjectURL(prevUrl)
+      } catch (_) {}
+    }
+    return
+  }
 
   // Swap only after image is ready. Replace shell in one turn (no mid-frame empty board),
   // sync-paint tiles, then revoke the previous object URL.
@@ -199,7 +293,13 @@ function advanceAfterHold() {
     renderTimesUp()
     return
   }
-  loadNextPuzzle()
+  allPhotosPlayed().then((all) => {
+    if (all) state.played = new Set() // same as Play them again
+    return loadNextPuzzle()
+  }).catch((err) => {
+    console.error(err)
+    showToast(withErrName('Could not load the next photo.', err), 8000)
+  })
 }
 
 function handleSolved() {
@@ -217,6 +317,7 @@ function handleSolved() {
 
   const footer = document.getElementById('reveal-footer')
   if (footer) footer.hidden = false
+  showEndCardIfAllPlayed()
 
   clearHold()
   state.holdTimerId = setTimeout(() => {
@@ -225,8 +326,42 @@ function handleSolved() {
   }, HOLD_MS)
 }
 
+/** Every photo shown this outing? Count only; never read photo bytes. */
+async function allPhotosPlayed() {
+  try {
+    const count = await photoCount()
+    return count > 0 && state.played.size >= count
+  } catch (err) {
+    console.error(err)
+    return false
+  }
+}
+
+/** Swap Next for the end card once every photo has been played. */
+async function showEndCardIfAllPlayed() {
+  if (!(await allPhotosPlayed())) return
+  if (!state.celebrating) return // already moved on
+  const footer = document.getElementById('reveal-footer')
+  const card = document.getElementById('end-card')
+  const bar = document.getElementById('puzzle-bar')
+  if (footer) footer.hidden = true
+  if (bar) bar.hidden = true
+  if (card) card.hidden = false
+}
+
+/** Reset the played set and give a fresh scrambled board. */
+function playThemAgain() {
+  clearHold()
+  state.played = new Set()
+  loadNextPuzzle().catch((err) => {
+    console.error(err)
+    showToast(withErrName('Could not load the next photo.', err), 8000)
+  })
+}
+
 function teardownPuzzle(clearUrl = true) {
   clearHold()
+  closeConfirm()
   if (state.puzzle) {
     state.puzzle.destroy()
     state.puzzle = null
@@ -275,11 +410,13 @@ function renderSplash({ loading = false, error = null } = {}) {
     const btn = document.getElementById('btn-demo')
     if (btn) btn.disabled = true
     try {
-      await ensureDemoPhotos()
+      state.demoPhotos = await loadDemoPhotos()
+      state.demo = true
       goTimerConfirm({ demo: true })
     } catch (err) {
       console.error(err)
-      renderSplash({ error: 'Could not load demo photos.' })
+      dropDemo()
+      renderSplash({ error: withErrName('Could not load demo photos.', err) })
     }
   })
 }
@@ -291,6 +428,7 @@ function renderTimerConfirm({ returning = false, demo = false, count = 0 } = {})
       ? 'Demo photos loaded.'
       : 'Photos ready.'
   if (!DIFFICULTY[state.difficulty]) state.difficulty = DEFAULT_DIFFICULTY
+  if (!OUTING_MINUTES.includes(state.timerMinutes)) state.timerMinutes = DEFAULT_MINUTES
   const pills = Object.values(DIFFICULTY)
     .map(
       (d) => `
@@ -300,33 +438,50 @@ function renderTimerConfirm({ returning = false, demo = false, count = 0 } = {})
         </button>`,
     )
     .join('')
+  const timePills = OUTING_MINUTES.map(
+    (m) => `
+        <button type="button" class="diff-pill${m === state.timerMinutes ? ' is-selected' : ''}" data-mins="${m}" aria-pressed="${m === state.timerMinutes}">
+          <span class="diff-label">${m} min</span>
+        </button>`,
+  ).join('')
   app.innerHTML = `
     <main class="screen timer-confirm safe">
       <p class="eyebrow">Outing</p>
-      <h1 class="title sm">About ${DEFAULT_MINUTES} minutes</h1>
+      <h1 class="title sm" id="outing-title">About ${state.timerMinutes} minutes</h1>
       <p class="lede">${escapeHtml(note)} Set once, then walk away.</p>
+      <p class="field-label">Length</p>
+      <div class="diff-row" role="group" aria-label="Outing length">${timePills}</div>
       <p class="field-label">Difficulty</p>
       <div class="diff-row" role="group" aria-label="Difficulty">${pills}</div>
       <div class="actions">
         <button class="btn primary" id="btn-start">Start</button>
-        <button class="btn ghost" id="btn-add" title="Parent">Add more photos</button>
+        ${demo ? '' : '<button class="btn ghost" id="btn-add" title="Parent">Add more photos</button>'}
       </div>
     </main>
   `
-  document.querySelectorAll('.diff-pill').forEach((btn) => {
+  document.querySelectorAll('.diff-pill[data-mins]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.timerMinutes = Number(btn.dataset.mins) || DEFAULT_MINUTES
+      const title = document.getElementById('outing-title')
+      if (title) title.textContent = `About ${state.timerMinutes} minutes`
+      document.querySelectorAll('.diff-pill[data-mins]').forEach((b) => {
+        const on = Number(b.dataset.mins) === state.timerMinutes
+        b.classList.toggle('is-selected', on)
+        b.setAttribute('aria-pressed', String(on))
+      })
+    })
+  })
+  document.querySelectorAll('.diff-pill[data-diff]').forEach((btn) => {
     btn.addEventListener('click', () => {
       state.difficulty = btn.dataset.diff || DEFAULT_DIFFICULTY
-      document.querySelectorAll('.diff-pill').forEach((b) => {
+      document.querySelectorAll('.diff-pill[data-diff]').forEach((b) => {
         const on = b.dataset.diff === state.difficulty
         b.classList.toggle('is-selected', on)
         b.setAttribute('aria-pressed', String(on))
       })
     })
   })
-  document.getElementById('btn-start')?.addEventListener('click', () => {
-    state.timerMinutes = DEFAULT_MINUTES
-    startSession()
-  })
+  document.getElementById('btn-start')?.addEventListener('click', () => startSession())
   document.getElementById('btn-add')?.addEventListener('click', () => fileInput.click())
 }
 
@@ -340,10 +495,6 @@ function renderPuzzleShell() {
           <span id="timer-label">${escapeHtml(label)}</span>
         </div>
         <div class="timer-track" aria-hidden="true"><div id="timer-bar" class="timer-bar"></div></div>
-        <div class="parent-gate">
-          <button class="parent-link" id="btn-parent" aria-label="Hold to add more photos" title="Hold to add photos">···</button>
-          <span class="parent-hold-hint" aria-hidden="true">hold to add photos</span>
-        </div>
       </header>
       <div class="board-slot">
         <div id="board" class="board" role="application" aria-label="Photo puzzle"></div>
@@ -353,10 +504,34 @@ function renderPuzzleShell() {
         <p class="reveal-caption">Have a look</p>
         <button type="button" class="btn primary btn-next" id="btn-next">Next</button>
       </div>
+      <div id="end-card" class="end-card" hidden>
+        <p class="end-title">${state.demo ? 'That’s the demo 🎉' : 'That’s all your photos 🎉'}</p>
+        <button type="button" class="btn primary" id="btn-again-photos">Play them again</button>
+        <div class="end-row">
+          <button type="button" class="btn ghost" id="end-add">${state.demo ? 'Use her photos' : '+ Add photos'}</button>
+          <button type="button" class="btn ghost" id="end-start">Back to start</button>
+        </div>
+      </div>
+      <nav class="puzzle-bar" id="puzzle-bar" aria-label="Grown-ups">
+        <button type="button" class="bar-btn" id="bar-add">${state.demo ? 'use her photos' : '+ add photos'}</button>
+        <button type="button" class="bar-btn" id="bar-start">⌂ start</button>
+      </nav>
     </main>
   `
-  bindParentLongPress(document.getElementById('btn-parent'), () => fileInput.click())
   document.getElementById('btn-next')?.addEventListener('click', () => advanceAfterHold())
+  document.getElementById('btn-again-photos')?.addEventListener('click', () => playThemAgain())
+  for (const id of ['bar-add', 'end-add']) {
+    document.getElementById(id)?.addEventListener('click', () => {
+      if (state.demo) {
+        confirmLeaveDemo()
+        return
+      }
+      clearHold() // don't auto-advance under the photo picker
+      fileInput.click() // synchronous inside the click: iOS allows the picker
+    })
+  }
+  document.getElementById('bar-start')?.addEventListener('click', () => confirmBackToStart())
+  document.getElementById('end-start')?.addEventListener('click', () => confirmBackToStart())
   if (state.timer) {
     updateTimerHud({
       label: state.timer.format(),
@@ -380,14 +555,17 @@ function renderTimesUp() {
       <div class="actions">
         <button class="btn primary" id="btn-again">Start again</button>
       </div>
-      <button class="parent-link bottom" id="btn-parent">Add more photos</button>
+      <button class="parent-link bottom" id="btn-parent">${state.demo ? 'Use her photos' : 'Add more photos'}</button>
     </main>
   `
-  document.getElementById('btn-again')?.addEventListener('click', () => goTimerConfirm({ returning: true }))
-  document.getElementById('btn-parent')?.addEventListener('click', () => fileInput.click())
+  document.getElementById('btn-again')?.addEventListener('click', () => backToStart())
+  document.getElementById('btn-parent')?.addEventListener('click', () => {
+    if (state.demo) confirmLeaveDemo()
+    else fileInput.click()
+  })
 }
 
-function showToast(msg) {
+function showToast(msg, ms = 1800) {
   let t = document.getElementById('toast')
   if (!t) {
     t = document.createElement('div')
@@ -398,57 +576,83 @@ function showToast(msg) {
   t.textContent = msg
   t.classList.add('show')
   clearTimeout(showToast._id)
-  showToast._id = setTimeout(() => t.classList.remove('show'), 1800)
+  showToast._id = setTimeout(() => t.classList.remove('show'), ms)
 }
 
 
-/** Mid-puzzle parent gate: long-press opens add-photos; kid tap does nothing. */
-const PARENT_HOLD_MS = 700
+/** "back to start?" confirm: losing the timer mid-outing costs more than a tap, so ask once. */
+function closeConfirm() {
+  document.getElementById('confirm-sheet')?.remove()
+}
 
-function bindParentLongPress(btn, onUnlock) {
-  if (!btn) return
-  let holdId = null
-  let unlocked = false
+function confirmBackToStart() {
+  closeConfirm()
+  const sheet = document.createElement('div')
+  sheet.id = 'confirm-sheet'
+  sheet.className = 'sheet'
+  sheet.setAttribute('role', 'dialog')
+  sheet.setAttribute('aria-label', 'Back to start?')
+  sheet.innerHTML = `
+    <div class="sheet-scrim" data-close></div>
+    <div class="sheet-panel">
+      <p class="sheet-title">Back to start? This ends the outing.</p>
+      <button type="button" class="btn primary" id="confirm-keep" data-close>Keep playing</button>
+      <button type="button" class="btn ghost" id="confirm-start">Back to start</button>
+    </div>
+  `
+  document.body.appendChild(sheet)
+  sheet.querySelectorAll('[data-close]').forEach((el) => el.addEventListener('click', closeConfirm))
+  sheet.querySelector('#confirm-start').addEventListener('click', () => backToStart())
+}
 
-  const clear = () => {
-    if (holdId != null) {
-      clearTimeout(holdId)
-      holdId = null
-    }
-    btn.classList.remove('is-holding')
-  }
-
-  btn.addEventListener('pointerdown', (e) => {
-    if (e.button !== undefined && e.button !== 0) return
-    unlocked = false
-    btn.classList.add('is-holding')
-    try {
-      btn.setPointerCapture?.(e.pointerId)
-    } catch {
-      /* synthetic / inactive pointer ids — hold timer still runs */
-    }
-    holdId = setTimeout(() => {
-      holdId = null
-      unlocked = true
-      btn.classList.remove('is-holding')
-      btn.classList.add('is-unlocked')
-      setTimeout(() => btn.classList.remove('is-unlocked'), 400)
-      onUnlock()
-    }, PARENT_HOLD_MS)
+/** End the outing and return to the start screen (difficulty lives there). */
+/** Leave the demo sandbox for her real photos. */
+function confirmLeaveDemo() {
+  closeConfirm()
+  clearHold() // don't auto-advance under the confirm / picker
+  const sheet = document.createElement('div')
+  sheet.id = 'confirm-sheet'
+  sheet.className = 'sheet'
+  sheet.setAttribute('role', 'dialog')
+  sheet.setAttribute('aria-label', 'Leave the demo?')
+  sheet.innerHTML = `
+    <div class="sheet-scrim" data-close></div>
+    <div class="sheet-panel">
+      <p class="sheet-title">Leave the demo? Her photos replace these.</p>
+      <button type="button" class="btn primary" id="confirm-leave">Use her photos</button>
+      <button type="button" class="btn ghost" data-close>Keep the demo</button>
+    </div>
+  `
+  document.body.appendChild(sheet)
+  sheet.querySelectorAll('[data-close]').forEach((el) => el.addEventListener('click', closeConfirm))
+  sheet.querySelector('#confirm-leave').addEventListener('click', () => {
+    closeConfirm()
+    state.leavingDemo = true
+    fileInput.click() // synchronous inside the click: iOS allows the picker
   })
+}
 
-  const cancel = () => {
-    if (unlocked) return
-    clear()
+async function backToStart() {
+  closeConfirm()
+  clearHold()
+  loadGen++ // drop any in-flight load
+  if (state.timer) {
+    state.timer.stop()
+    state.timer = null
   }
-  btn.addEventListener('pointerup', cancel)
-  btn.addEventListener('pointercancel', cancel)
-  btn.addEventListener('pointerleave', cancel)
-  // Swallow click so a tap never opens the picker
-  btn.addEventListener('click', (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-  })
+  teardownPuzzle()
+  dropDemo() // demo never persists; splash comes back when the store is empty
+  let count = 0
+  try {
+    count = await countPhotos()
+  } catch (err) {
+    console.error(err)
+  }
+  if (!count) {
+    renderSplash()
+    return
+  }
+  goTimerConfirm({ returning: true, count })
 }
 
 function escapeHtml(s) {

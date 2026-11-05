@@ -30,50 +30,45 @@ await page.reload({ waitUntil: 'networkidle' })
 await page.waitForSelector('#btn-demo')
 await page.click('#btn-demo')
 await page.waitForSelector('#btn-start')
+const outingLength = await page.evaluate(() => {
+  const pills = [...document.querySelectorAll('.diff-pill[data-mins]')]
+  const selected = pills.find((b) => b.classList.contains('is-selected'))
+  return {
+    values: pills.map((b) => Number(b.dataset.mins)),
+    defaultMin: selected ? Number(selected.dataset.mins) : null,
+    title: document.getElementById('outing-title')?.textContent || '',
+  }
+})
+await page.click('.diff-pill[data-mins="10"]')
+const titleAfter10 = await page.evaluate(() => document.getElementById('outing-title')?.textContent || '')
+await page.click('.diff-pill[data-mins="15"]') // back to default for the rest of the run
 await page.click('#btn-start')
 await page.waitForSelector('.puzzle-board')
 
-// Parent ··· discoverability: always-visible “hold to add photos” hint; tap no-op; long-press opens add-photos
-await page.waitForSelector('.parent-hold-hint')
-const parentAffordance = await page.evaluate(() => {
-  const hint = document.querySelector('.parent-hold-hint')
-  const btn = document.getElementById('btn-parent')
-  const style = hint ? getComputedStyle(hint) : null
-  return {
-    hintText: (hint?.textContent || '').trim().toLowerCase(),
-    hintVisible: !!(hint && style && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0),
-    btnPresent: !!btn,
-  }
-})
-
+// Bar under the puzzle (demo outing): "use her photos" asks first; ⌂ start asks first
 await page.evaluate(() => {
   window.__fileClicks = 0
   const input = document.querySelector('input[type="file"]')
-  if (!input) return
-  input.click = () => { window.__fileClicks += 1 }
+  if (input) input.click = () => { window.__fileClicks += 1 }
 })
-
-// Quick tap — must not open add-photos
-await page.evaluate(() => {
-  const btn = document.getElementById('btn-parent')
-  btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, button: 0, clientX: 10, clientY: 10 }))
-  btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, button: 0, clientX: 10, clientY: 10 }))
-  btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))
+const barPresent = await page.evaluate(() => {
+  const bar = document.getElementById('puzzle-bar')
+  const add = document.getElementById('bar-add')
+  return {
+    ok: !!bar && !bar.hidden && !document.getElementById('btn-parent'),
+    addLabel: (add?.textContent || '').trim().toLowerCase(),
+  }
 })
-await page.waitForTimeout(100)
-const fileClicksAfterTap = await page.evaluate(() => window.__fileClicks)
-
-// Long-press ~700ms — must open add-photos (fileInput.click)
-await page.evaluate(() => {
-  const btn = document.getElementById('btn-parent')
-  btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 2, button: 0, clientX: 10, clientY: 10 }))
-})
-await page.waitForTimeout(780)
-await page.evaluate(() => {
-  const btn = document.getElementById('btn-parent')
-  btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 2, button: 0, clientX: 10, clientY: 10 }))
-})
-const fileClicksAfterHold = await page.evaluate(() => window.__fileClicks)
+await page.click('#bar-add')
+const leaveDemoOpens = !!(await page.$('#confirm-sheet'))
+const fileClicksAfterBarAdd = await page.evaluate(() => window.__fileClicks) // still 0: confirm first
+await page.click('#confirm-leave')
+const fileClicksAfterLeave = await page.evaluate(() => window.__fileClicks) // 1: picker after confirm
+await page.evaluate(() => document.getElementById('confirm-sheet')?.remove())
+await page.click('#bar-start')
+const confirmOpens = !!(await page.$('#confirm-sheet'))
+await page.click('#confirm-keep')
+const keepPlayingStays = !(await page.$('#confirm-sheet')) && !!(await page.$('.puzzle-board'))
 
 const tileCount = await page.locator('.puzzle-tile').count()
 
@@ -103,6 +98,9 @@ async function solveCurrent() {
 await solveCurrent()
 await page.waitForSelector('.puzzle-board.is-solved')
 await page.waitForSelector('#btn-next')
+await page.waitForTimeout(150)
+// 3 demo photos, first one played: no end card yet
+const endHiddenFirstSolve = await page.evaluate(() => !!document.getElementById('end-card')?.hidden)
 await page.waitForTimeout(700) // join animation
 
 const gap = await page.evaluate(() => {
@@ -163,25 +161,82 @@ await page.waitForTimeout(1500)
 const stillHeld = await page.locator('.puzzle-board.is-solved').count()
 const stillNext = await page.locator('#btn-next').count()
 
-// Resume/restart with stored pool → outing-start, one Start tap
+// Keep going until every photo is played: the reveal swaps Next for the end card
+for (let i = 0; i < 8; i++) {
+  if (await page.evaluate(() => !document.getElementById('end-card').hidden)) break
+  await page.click('#btn-next')
+  await page.waitForSelector('.puzzle-board:not(.is-solved)')
+  await solveCurrent()
+  await page.waitForSelector('.puzzle-board.is-solved')
+  await page.waitForTimeout(300)
+}
+const endCard = await page.evaluate(() => ({
+  shown: !document.getElementById('end-card').hidden,
+  nextHidden: document.getElementById('reveal-footer').hidden,
+  barHidden: document.getElementById('puzzle-bar').hidden,
+}))
+await page.screenshot({ path: '/workspace/bairn/smoke-end-card.png' })
+// end card's Back to start goes through the same confirm
+await page.click('#end-start')
+const endStartConfirms = !!(await page.$('#confirm-sheet'))
+await page.click('#confirm-keep')
+const endCardStaysAfterKeep = await page.evaluate(() => !document.getElementById('confirm-sheet') && !document.getElementById('end-card').hidden)
+await page.click('#btn-again-photos')
+await page.waitForSelector('.puzzle-board:not(.is-solved)')
+const playAgain = await page.evaluate(() => ({
+  fresh: !document.querySelector('.puzzle-board.is-solved'),
+  endHidden: document.getElementById('end-card').hidden,
+  barBack: !document.getElementById('puzzle-bar').hidden,
+}))
+// After play again, the next solve is a normal reveal (played set reset)
+await solveCurrent()
+await page.waitForTimeout(300)
+const normalRevealAfterAgain = await page.evaluate(() => !document.getElementById('reveal-footer').hidden && document.getElementById('end-card').hidden)
+
+// ⌂ start → confirm → back to start: demo never persisted, so splash comes back
+await page.click('#bar-start')
+await page.click('#confirm-start')
+await page.waitForSelector('#btn-demo')
+const backToStart = await page.evaluate(() => ({
+  onSplash: !!document.getElementById('btn-demo'),
+  hasUsePhotos: !!document.getElementById('btn-photos'),
+  noOuting: !document.querySelector('.timer-confirm'),
+}))
+
+// Demo never hits IndexedDB: reload returns to splash, not the outing
 await page.reload({ waitUntil: 'networkidle' })
-await page.waitForSelector('#btn-start')
+await page.waitForSelector('#btn-demo')
 const resumeScreen = await page.evaluate(() => ({
   hasStart: !!document.getElementById('btn-start'),
   hasDemo: !!document.getElementById('btn-demo'),
   isOuting: !!document.querySelector('.timer-confirm'),
 }))
+// Library path: add photos, then reload should land on outing
+await page.setInputFiles('input[type="file"]', '/tmp/one.jpg')
+await page.waitForSelector('#btn-start')
 await page.click('#btn-start')
 await page.waitForSelector('.puzzle-board')
 const resumeTiles = await page.locator('.puzzle-tile').count()
 
 const ok =
   tileCount === 4 &&
-  parentAffordance.hintText === 'hold to add photos' &&
-  parentAffordance.hintVisible &&
-  parentAffordance.btnPresent &&
-  fileClicksAfterTap === 0 &&
-  fileClicksAfterHold === 1 &&
+  outingLength.values.join(',') === '10,15,25' &&
+  outingLength.defaultMin === 15 &&
+  outingLength.title.includes('15') &&
+  titleAfter10.includes('10') &&
+  barPresent.ok &&
+  barPresent.addLabel === 'use her photos' &&
+  leaveDemoOpens &&
+  fileClicksAfterBarAdd === 0 &&
+  fileClicksAfterLeave === 1 &&
+  confirmOpens &&
+  keepPlayingStays &&
+  endHiddenFirstSolve &&
+  endCard.shown && endCard.nextHidden && endCard.barHidden &&
+  playAgain.fresh && playAgain.endHidden && playAgain.barBack &&
+  normalRevealAfterAgain &&
+  endStartConfirms && endCardStaysAfterKeep &&
+  backToStart.onSplash && backToStart.hasUsePhotos && backToStart.noOuting &&
   footerVisible === 1 &&
   coachHidden === 1 &&
   celebrateGone === 0 &&
@@ -197,17 +252,29 @@ const ok =
   tileVisibility.square &&
   tileVisibility.centred &&
   tileVisibility.fullBleed &&
-  resumeScreen.hasStart &&
-  !resumeScreen.hasDemo &&
-  resumeScreen.isOuting &&
+  !resumeScreen.hasStart &&
+  resumeScreen.hasDemo &&
+  !resumeScreen.isOuting &&
   resumeTiles === 4 &&
   errors.length === 0
 
 console.log(JSON.stringify({
   tileCount,
-  parentAffordance,
-  fileClicksAfterTap,
-  fileClicksAfterHold,
+  outingLength,
+  titleAfter10,
+  barPresent,
+  leaveDemoOpens,
+  fileClicksAfterBarAdd,
+  fileClicksAfterLeave,
+  confirmOpens,
+  keepPlayingStays,
+  endHiddenFirstSolve,
+  endCard,
+  playAgain,
+  normalRevealAfterAgain,
+  endStartConfirms,
+  endCardStaysAfterKeep,
+  backToStart,
   gapAfterSolve: gap,
   footerVisible,
   coachHidden,
